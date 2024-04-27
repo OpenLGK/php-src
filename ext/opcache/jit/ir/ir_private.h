@@ -855,6 +855,8 @@ extern const uint8_t ir_type_size[IR_LAST_TYPE];
 extern const uint32_t ir_op_flags[IR_LAST_OP];
 extern const char *ir_op_name[IR_LAST_OP];
 
+void ir_print_escaped_str(const char *s, size_t len, FILE *f);
+
 #define IR_IS_CONST_OP(op)       ((op) > IR_NOP && (op) <= IR_C_FLOAT)
 #define IR_IS_FOLDABLE_OP(op)    ((op) <= IR_LAST_FOLDABLE_OP)
 #define IR_IS_SYM_CONST(op)      ((op) == IR_STR || (op) == IR_SYM || (op) == IR_FUNC)
@@ -863,8 +865,9 @@ ir_ref ir_const_ex(ir_ctx *ctx, ir_val val, uint8_t type, uint32_t optx);
 
 IR_ALWAYS_INLINE bool ir_const_is_true(const ir_insn *v)
 {
-
-	if (v->type == IR_BOOL) {
+	if (IR_IS_SYM_CONST(v->op)) {
+		return 1;
+	} else if (v->type == IR_BOOL) {
 		return v->val.b;
 	} else if (IR_IS_TYPE_INT(v->type)) {
 		return v->val.i64 != 0;
@@ -985,6 +988,7 @@ IR_ALWAYS_INLINE uint32_t ir_insn_len(const ir_insn *insn)
 
 /* Temporary: SCCP -> CFG */
 #define IR_SCCP_DONE           (1<<25)
+#define IR_CFG_REACHABLE       (1<<26)
 
 /* Temporary: Dominators -> Loops */
 #define IR_NO_LOOPS            (1<<25)

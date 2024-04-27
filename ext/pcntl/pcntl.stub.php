@@ -243,6 +243,20 @@ const SIGSYS = UNKNOWN;
  */
 const SIGBABY = UNKNOWN;
 #endif
+#ifdef SIGCKPT
+/**
+ * @var int
+ * @cvalue LONG_CONST(SIGCKPT)
+ */
+const SIGCKPT = UNKNOWN;
+#endif
+#ifdef SIGCKPTEXIT
+/**
+ * @var int
+ * @cvalue LONG_CONST(SIGCKPTEXIT)
+ */
+const SIGCKPTEXIT = UNKNOWN;
+#endif
 #ifdef SIGRTMIN
 /**
  * @var int
@@ -1002,4 +1016,18 @@ function pcntl_setcpuaffinity(?int $process_id = null, array $cpu_ids = []): boo
 
 #ifdef HAVE_SCHED_GETCPU
 function pcntl_getcpu(): int {}
+#endif
+
+#ifdef HAVE_PTHREAD_SET_QOS_CLASS_SELF_NP
+enum QosClass
+{
+	case UserInteractive;
+	case UserInitiated;
+	case Default;
+	case Utility;
+	case Background;
+}
+
+function pcntl_getqos_class(): QosClass {}
+function pcntl_setqos_class(QosClass $qos_class = QosClass::Default): void {}
 #endif
