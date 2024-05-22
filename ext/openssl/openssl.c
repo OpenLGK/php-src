@@ -59,6 +59,7 @@
 #if PHP_OPENSSL_API_VERSION >= 0x30000
 #include <openssl/core_names.h>
 #include <openssl/param_build.h>
+#include <openssl/provider.h>
 #endif
 
 #if defined(LIBRESSL_VERSION_NUMBER) && !defined(OPENSSL_NO_ENGINE)
@@ -184,7 +185,7 @@ typedef struct _php_openssl_x509_request_object {
 	zend_object std;
 } php_openssl_request_object;
 
-zend_class_entry *php_openssl_request_ce;
+static zend_class_entry *php_openssl_request_ce;
 
 static inline php_openssl_request_object *php_openssl_request_from_obj(zend_object *obj) {
 	return (php_openssl_request_object *)((char *)(obj) - XtOffsetOf(php_openssl_request_object, std));
@@ -224,7 +225,7 @@ typedef struct _php_openssl_pkey_object {
 	zend_object std;
 } php_openssl_pkey_object;
 
-zend_class_entry *php_openssl_pkey_ce;
+static zend_class_entry *php_openssl_pkey_ce;
 
 static inline php_openssl_pkey_object *php_openssl_pkey_from_obj(zend_object *obj) {
 	return (php_openssl_pkey_object *)((char *)(obj) - XtOffsetOf(php_openssl_pkey_object, std));
@@ -485,7 +486,7 @@ void php_openssl_store_errors(void)
 /* }}} */
 
 /* {{{ php_openssl_errors_set_mark */
-void php_openssl_errors_set_mark(void) {
+static void php_openssl_errors_set_mark(void) {
 	if (!OPENSSL_G(errors)) {
 		return;
 	}
@@ -499,7 +500,7 @@ void php_openssl_errors_set_mark(void) {
 /* }}} */
 
 /* {{{ php_openssl_errors_restore_mark */
-void php_openssl_errors_restore_mark(void) {
+static void php_openssl_errors_restore_mark(void) {
 	if (!OPENSSL_G(errors)) {
 		return;
 	}
@@ -1277,6 +1278,10 @@ PHP_MINIT_FUNCTION(openssl)
 	OpenSSL_add_all_algorithms();
 	SSL_load_error_strings();
 #else
+#if PHP_OPENSSL_API_VERSION >= 0x30000 && defined(LOAD_OPENSSL_LEGACY_PROVIDER)
+	OSSL_PROVIDER_load(NULL, "legacy");
+	OSSL_PROVIDER_load(NULL, "default");
+#endif
 	OPENSSL_init_ssl(OPENSSL_INIT_LOAD_CONFIG, NULL);
 #endif
 

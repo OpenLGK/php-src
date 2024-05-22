@@ -4528,6 +4528,7 @@ ZEND_VM_HANDLER(139, ZEND_GENERATOR_CREATE, ANY, ANY)
 
 		/* Save execution context in generator object. */
 		generator = (zend_generator *) Z_OBJ_P(EX(return_value));
+		generator->func = gen_execute_data->func;
 		generator->execute_data = gen_execute_data;
 		generator->frozen_call_stack = NULL;
 		generator->execute_fake.opline = NULL;
@@ -8018,6 +8019,8 @@ ZEND_VM_HELPER(zend_dispatch_try_catch_finally_helper, ANY, ANY, uint32_t try_ca
 	}
 
 	/* Uncaught exception */
+
+	/* Don't use ZEND_OBSERVER_ENABLED because it gets replaced by zend_vm_gen.php. */
 	if (zend_observer_fcall_op_array_extension != -1) {
 		zend_observer_fcall_end(execute_data, NULL);
 	}

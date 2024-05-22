@@ -220,6 +220,9 @@ case $host_cpu in
     ;;
 esac
 
+dnl See https://github.com/php/php-src/issues/14140
+AX_CHECK_COMPILE_FLAG([-ffp-contract=off], [CFLAGS="$CFLAGS -ffp-contract=off"])
+
 dnl Mark symbols hidden by default if the compiler (for example, gcc >= 4)
 dnl supports it. This can help reduce the binary size and startup time.
 AX_CHECK_COMPILE_FLAG([-fvisibility=hidden],
@@ -356,16 +359,17 @@ test -d /usr/ucblib && PHP_ADD_LIBPATH(/usr/ucblib)
 dnl First, library checks.
 dnl ----------------------------------------------------------------------------
 
-dnl Some systems (OpenServer 5) dislike -lsocket -lnsl, so we try to avoid -lnsl
-dnl checks, if we already have the functions which are usually in libnsl. Also,
-dnl uClibc will bark at linking with glibc's libnsl.
-
 AC_SEARCH_LIBS([socket], [socket network])
-PHP_CHECK_FUNC(socketpair, socket, network)
-PHP_CHECK_FUNC(gethostname, nsl, network)
-PHP_CHECK_FUNC(gethostbyaddr, nsl, network)
+
+AC_CHECK_FUNCS([socketpair],,
+  [AC_SEARCH_LIBS([socketpair], [socket network],
+    [AC_DEFINE([HAVE_SOCKETPAIR], [1])])])
+
+AC_SEARCH_LIBS([gethostbyaddr], [nsl network])
+
 AC_SEARCH_LIBS([dlopen], [dl],
   [AC_DEFINE([HAVE_LIBDL], [1], [Define to 1 if the dl library is available.])])
+
 AC_SEARCH_LIBS([sin], [m])
 
 case $host_alias in
@@ -530,6 +534,7 @@ AC_CACHE_CHECK(whether the compiler supports __alignof__, ac_cv_alignof_exists,[
 AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
 ]],[[
   int align = __alignof__(int);
+  (void)align;
 ]])],[
   ac_cv_alignof_exists=yes
 ],[
@@ -566,11 +571,21 @@ AS_CASE([$host_alias], [*-*-*android*|*-*-*uclibc*|*-*-*musl*|*openbsd*], [true]
   fi
 ])
 
+dnl Check for __attribute__ ((__aligned__)) support in the compiler.
+PHP_CHECK_VARIABLE_ATTRIBUTE([aligned])
+
 dnl Check for IPv6 support.
 AC_CACHE_CHECK([for IPv6 support], ac_cv_ipv6_support,
 [AC_LINK_IFELSE([AC_LANG_PROGRAM([[#include <sys/types.h>
 #include <sys/socket.h>
-#include <netinet/in.h>]], [[struct sockaddr_in6 s; struct in6_addr t=in6addr_any; int i=AF_INET6; s; t.s6_addr[0] = 0;]])],
+#include <netinet/in.h>]], [[
+  struct sockaddr_in6 s;
+  struct in6_addr t = in6addr_any;
+  int i = AF_INET6;
+  (void)s;
+  t.s6_addr[0] = 0;
+  (void)i;
+]])],
   [ac_cv_ipv6_support=yes], [ac_cv_ipv6_support=no])])
 
 dnl Checks for library functions.
@@ -588,6 +603,7 @@ ftok \
 funopen \
 gai_strerror \
 getcwd \
+gethostname \
 getloadavg \
 getlogin \
 getprotobyname \
@@ -824,8 +840,9 @@ if test "$PHP_GCOV" = "yes"; then
 
   dnl Remove all optimization flags from CFLAGS.
   changequote({,})
-  CFLAGS=`echo "$CFLAGS" | "${SED}" -e 's/-O[0-9s]*//g'`
-  CXXFLAGS=`echo "$CXXFLAGS" | "${SED}" -e 's/-O[0-9s]*//g'`
+  dnl Discard known '-O...' flags, including just '-O', but do not remove only '-O' in '-Ounknown'
+  CFLAGS=`echo "$CFLAGS" | $SED -e 's/-O\([0-9gsz]\|fast\|\)\([\t ]\|$\)//g'`
+  CXXFLAGS=`echo "$CXXFLAGS" | $SED -e 's/-O\([0-9gsz]\|fast\|\)\([\t ]\|$\)//g'`
   changequote([,])
 
   dnl Add the special gcc flags.
@@ -844,8 +861,9 @@ if test "$PHP_DEBUG" = "yes"; then
   PHP_DEBUG=1
   ZEND_DEBUG=yes
   changequote({,})
-  CFLAGS=`echo "$CFLAGS" | "${SED}" -e 's/-O[0-9s]*//g'`
-  CXXFLAGS=`echo "$CXXFLAGS" | "${SED}" -e 's/-O[0-9s]*//g'`
+  dnl Discard known '-O...' flags, including just '-O', but do not remove only '-O' in '-Ounknown'
+  CFLAGS=`echo "$CFLAGS" | $SED -e 's/-O\([0-9gsz]\|fast\|\)\([\t ]\|$\)//g'`
+  CXXFLAGS=`echo "$CXXFLAGS" | $SED -e 's/-O\([0-9gsz]\|fast\|\)\([\t ]\|$\)//g'`
   changequote([,])
   dnl Add -O0 only if GCC or ICC is used.
   if test "$GCC" = "yes" || test "$ICC" = "yes"; then

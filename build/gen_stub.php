@@ -2101,6 +2101,13 @@ OUPUT_EXAMPLE
                 }
 
                 $methodSynopsis->appendChild($methodparam);
+                foreach ($arg->attributes as $attribute) {
+                    $attribute = $doc->createElement("modifier", "#[\\" . $attribute->class . "]");
+                    $attribute->setAttribute("role", "attribute");
+
+                    $methodparam->appendChild($attribute);
+                }
+
                 $methodparam->appendChild($arg->getMethodSynopsisType()->getTypeForDoc($doc));
 
                 $parameter = $doc->createElement('parameter', $arg->name);
@@ -2584,7 +2591,7 @@ class ConstInfo extends VariableLike
     {
         $className = str_replace(["\\", "_"], ["-", "-"], $this->name->class->toLowerString());
 
-        return "$className.constants." . strtolower(str_replace("_", "-", $this->name->getDeclarationName()));
+        return "$className.constants." . strtolower(str_replace(["__", "_"], ["", "-"], $this->name->getDeclarationName()));
     }
 
     protected function getFieldSynopsisName(): string
@@ -2919,7 +2926,7 @@ class PropertyInfo extends VariableLike
     {
         $className = str_replace(["\\", "_"], ["-", "-"], $this->name->class->toLowerString());
 
-        return "$className.props." . strtolower(str_replace("_", "-", $this->name->getDeclarationName()));
+        return "$className.props." . strtolower(str_replace(["__", "_"], ["", "-"], $this->name->getDeclarationName()));
     }
 
     protected function getFieldSynopsisName(): string
