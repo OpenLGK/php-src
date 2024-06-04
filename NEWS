@@ -28,7 +28,7 @@ PHP                                                                        NEWS
 - Curl:
   . Deprecated the CURLOPT_BINARYTRANSFER constant. (divinity76)
   . Bumped required libcurl version to 7.61.0. (Ayesh)
-  . Added feature_list key to the curl_version() return value (Ayesh)
+  . Added feature_list key to the curl_version() return value. (Ayesh)
 
 - Date:
   . Added DateTime[Immutable]::createFromTimestamp. (Marc Bennewitz)
@@ -45,6 +45,8 @@ PHP                                                                        NEWS
   . Implemented "Improve callbacks in ext/dom and ext/xsl" RFC. (nielsdos)
   . Added DOMXPath::quote() static method. (divinity76)
   . Implemented opt-in ext/dom spec compliance RFC. (nielsdos)
+  . Fixed bug #79701 (getElementById does not correctly work with duplicate
+    definitions). (nielsdos)
 
 - Fileinfo:
   . Update to libmagic 5.45. (nielsdos)
@@ -132,6 +134,7 @@ PHP                                                                        NEWS
   . Bumped minimum required OpenSSL version to 1.1.1. (Ayesh Karunaratne)
   . Added compile-time option --with-openssl-legacy-provider to enable legacy
     provider. (Adam Saponara)
+  . Added support for Curve25519 + Curve448 based keys. (Manuel Mausz)
 
 - Output:
   . Clear output handler status flags during handler initialization. (haszi)
@@ -158,7 +161,7 @@ PHP                                                                        NEWS
 
 - PDO_DBLIB:
   . Fixed setAttribute and getAttribute. (SakiTakamachi)
-  . Added class PdoDbLib (danack, kocsismate)
+  . Added class PdoDbLib. (danack, kocsismate)
 
 - PDO_FIREBIRD:
   . Fixed setAttribute and getAttribute. (SakiTakamachi)
@@ -194,6 +197,9 @@ PHP                                                                        NEWS
   . Added pg_result_memory_size to get the query result memory usage.
     (KentarouTakeda)
   . Added pg_change_password to alter an user's password. (David Carlier)
+  . Added pg_put_copy_data/pg_put_copy_end to send COPY commands and signal
+    the end of the COPY. (David Carlier)
+  . Added pg_socket_poll to poll on the connection. (David Carlier)
 
 - Phar:
   . Fixed bug GH-12532 (PharData created from zip has incorrect timestamp).
@@ -212,6 +218,7 @@ PHP                                                                        NEWS
     (nielsdos)
   . Make ReflectionGenerator::getFunction() legal after generator termination.
     (timwolla)
+  . Added ReflectionGenerator::isClosed(). (timwolla)
 
 - SimpleXML:
   . Fixed bug GH-12192 (SimpleXML infinite loop when getName() is called
@@ -242,6 +249,8 @@ PHP                                                                        NEWS
   . Fixed bug #49278 (SoapClient::__getLastResponseHeaders returns NULL if
     wsdl operation !has output). (nielsdos)
   . Fixed bug #44383 (PHP DateTime not converted to xsd:datetime). (nielsdos)
+  . Fixed bug GH-11941 (soap with session persistence will silently fail when
+    "session" built as a shared object). (nielsdos)
 
 - Sockets:
   . Removed the deprecated inet_ntoa call support. (David Carlier)
@@ -249,8 +258,8 @@ PHP                                                                        NEWS
   . Added the SOCK_CONN_DGRAM/SOCK_DCCP netbsd constants. (David Carlier)
 
 - Sodium:
-  . Add support for AEGIS-128L and AEGIS-256 (jedisct1)
-  . Enable AES-GCM on aarch64 with the ARM crypto extensions (jedisct1)
+  . Add support for AEGIS-128L and AEGIS-256. (jedisct1)
+  . Enable AES-GCM on aarch64 with the ARM crypto extensions. (jedisct1)
 
 - SPL:
   . Implement SeekableIterator for SplObjectStorage. (nielsdos)
@@ -276,7 +285,8 @@ PHP                                                                        NEWS
     http_clear_last_response_headers() that allows retrieving the same content
     as the magic $http_response_header variable.
   . Add php_base64_encode_ex() API. (Remi)
-  . Implemented "Raising zero to the power of negative number" RFC (Jorg Sowa)
+  . Implemented "Raising zero to the power of negative number" RFC. (Jorg Sowa)
+  . Added array_find(), array_find_key(), array_all(), and array_any(). (josh)
 
 - XML:
   . Added XML_OPTION_PARSE_HUGE parser option. (nielsdos)

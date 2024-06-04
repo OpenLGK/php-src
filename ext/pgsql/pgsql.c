@@ -40,6 +40,9 @@
 #include "php_globals.h"
 #include "zend_exceptions.h"
 #include "zend_attributes.h"
+#if !defined(HAVE_PG_SOCKET_POLL)
+#include "php_network.h"
+#endif
 
 #ifdef HAVE_PGSQL
 
@@ -440,6 +443,41 @@ static PGresult *PQchangePassword(PGconn *conn, const char *user, const char *pa
 	PQfreemem(fmtenc);
 
 	return pg_result;
+}
+#endif
+
+#if !defined(HAVE_PG_SOCKET_POLL)
+static int PQsocketPoll(int socket, int read, int write, time_t timeout)
+{
+	if (!read && !write)
+		return 0;
+
+	php_pollfd fd;
+	int ts = -1;
+
+	fd.fd = socket;
+	fd.events = POLLERR;
+	fd.revents = 0;
+
+	if (read) {
+		fd.events |= POLLIN;
+	}
+
+	if (write) {
+		fd.events |= POLLOUT;
+	}
+
+	if (timeout != (time_t)ts) {
+		time_t cur = time(NULL);
+
+		if (timeout > cur) {
+			ts = (timeout - cur) * 1000;
+		} else {
+			ts = 0;
+		}
+	}
+
+	return php_poll2(&fd, 1, ts);
 }
 #endif
 
@@ -6123,3 +6161,71 @@ PHP_FUNCTION(pg_change_password)
 }
 
 #endif
+
+PHP_FUNCTION(pg_put_copy_data)
+{
+	zval *pgsql_link;
+	pgsql_link_handle *link;
+	zend_string *cmd;
+
+	ZEND_PARSE_PARAMETERS_START(2, 2)
+		Z_PARAM_OBJECT_OF_CLASS(pgsql_link, pgsql_link_ce)
+		Z_PARAM_STR(cmd)
+	ZEND_PARSE_PARAMETERS_END();
+
+	link = Z_PGSQL_LINK_P(pgsql_link);
+	CHECK_PGSQL_LINK(link);
+
+	// PQputCopyData accepts empty buffers as well
+
+	RETURN_LONG((zend_long)PQputCopyData(link->conn, ZSTR_VAL(cmd), ZSTR_LEN(cmd)));
+}
+
+PHP_FUNCTION(pg_put_copy_end)
+{
+	zval *pgsql_link;
+	pgsql_link_handle *link;
+	zend_string *error;
+	char *err = NULL;
+
+	ZEND_PARSE_PARAMETERS_START(1, 2)
+		Z_PARAM_OBJECT_OF_CLASS(pgsql_link, pgsql_link_ce)
+		Z_PARAM_OPTIONAL
+		Z_PARAM_STR_OR_NULL(error)
+	ZEND_PARSE_PARAMETERS_END();
+
+	link = Z_PGSQL_LINK_P(pgsql_link);
+	CHECK_PGSQL_LINK(link);
+
+	if (error != NULL && ZSTR_LEN(error) != 0) {
+		err = ZSTR_VAL(error);
+	}
+
+	RETURN_LONG((zend_long)PQputCopyEnd(link->conn, err));
+}
+
+PHP_FUNCTION(pg_socket_poll)
+{
+	zval *z_socket;
+	php_stream *stream;
+	php_socket_t socket;
+	zend_long read, write;
+	zend_long ts = -1;
+
+	ZEND_PARSE_PARAMETERS_START(3, 4)
+		Z_PARAM_RESOURCE(z_socket)
+		Z_PARAM_LONG(read)
+		Z_PARAM_LONG(write)
+		Z_PARAM_OPTIONAL
+		Z_PARAM_LONG(ts)
+	ZEND_PARSE_PARAMETERS_END();
+
+	php_stream_from_zval(stream, z_socket);
+
+	if (php_stream_cast(stream, PHP_STREAM_AS_SOCKETD, (void **)&socket, 0)) {
+		zend_argument_type_error(1, "invalid resource socket");
+		RETURN_THROWS();
+	}
+
+	RETURN_LONG((zend_long)PQsocketPoll(socket, (int)read, (int)write, (int)ts));
+}

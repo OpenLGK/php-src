@@ -394,6 +394,10 @@ class SimpleType {
         return $this->isBuiltin && $this->name === 'array';
     }
 
+    public function isMixed(): bool {
+        return $this->isBuiltin && $this->name === 'mixed';
+    }
+
     public function toTypeCode(): string {
         assert($this->isBuiltin);
         switch ($this->name) {
@@ -1010,7 +1014,7 @@ class PropertyName implements VariableLikeName {
         $this->property = $property;
     }
 
-    public function __toString()
+    public function __toString(): string
     {
         return $this->class->toString() . "::$" . $this->property;
     }
@@ -2248,7 +2252,7 @@ class EvaluatedValue
                     return null;
                 }
 
-                throw new Exception("Constant " . $originatingConstName->__toString() . " cannot be found");
+                throw new Exception("Constant " . $constName . " cannot be found");
             }
         );
 
@@ -4233,7 +4237,7 @@ function parseFunctionLike(
                 $type && !$type->isNullable()
             ) {
                 $simpleType = $type->tryToSimpleType();
-                if ($simpleType === null) {
+                if ($simpleType === null || !$simpleType->isMixed()) {
                     throw new Exception("Parameter $varName has null default, but is not nullable");
                 }
             }
@@ -4342,13 +4346,26 @@ function parseConstLike(
         throw new Exception("Missing type for constant " . $name->__toString());
     }
 
+    $constType = $type ? Type::fromNode($type) : null;
+    $constPhpDocType = $phpDocType ? Type::fromString($phpDocType) : null;
+
+    if ($const->value instanceof Expr\ConstFetch &&
+        $const->value->name->toLowerString() === "null" &&
+        $constType && !$constType->isNullable()
+    ) {
+        $simpleType = $constType->tryToSimpleType();
+        if ($simpleType === null || !$simpleType->isMixed()) {
+            throw new Exception("Constant " . $name->__toString() . " has null value, but is not nullable");
+        }
+    }
+
     return new ConstInfo(
         $name,
         $flags,
         $const->value,
         $prettyPrinter->prettyPrintExpr($const->value),
-        $type ? Type::fromNode($type) : null,
-        $phpDocType ? Type::fromString($phpDocType) : null,
+        $constType,
+        $constPhpDocType,
         $deprecated,
         $cond,
         $cValue,
@@ -4401,9 +4418,8 @@ function parseProperty(
         $propertyType && !$propertyType->isNullable()
     ) {
         $simpleType = $propertyType->tryToSimpleType();
-        if ($simpleType === null) {
-            throw new Exception(
-                "Property $class::\$$property->name has null default, but is not nullable");
+        if ($simpleType === null || !$simpleType->isMixed()) {
+            throw new Exception("Property $class::\$$property->name has null default, but is not nullable");
         }
     }
 
@@ -5310,7 +5326,7 @@ function replacePredefinedConstants(string $targetDirectory, array $constMap, ar
 
     foreach ($it as $file) {
         $pathName = $file->getPathName();
-        if (!preg_match('/(?:[\w\.]*constants[\w\.]*|tokens).xml$/i', basename($pathName))) {
+        if (!preg_match('/(?:[\w\.]*constants[\w\._]*|tokens).xml$/i', basename($pathName))) {
             continue;
         }
 
@@ -5319,7 +5335,9 @@ function replacePredefinedConstants(string $targetDirectory, array $constMap, ar
             continue;
         }
 
-        if (stripos($xml, "<appendix") === false && stripos($xml, "<sect2") === false && stripos($xml, "<chapter") === false) {
+        if (stripos($xml, "<appendix") === false && stripos($xml, "<sect2") === false &&
+            stripos($xml, "<chapter") === false && stripos($xml, 'role="constant_list"') === false
+        ) {
             continue;
         }
 

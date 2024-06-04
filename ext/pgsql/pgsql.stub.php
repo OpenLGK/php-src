@@ -949,6 +949,14 @@ namespace {
 #endif
 
     function pg_change_password(PgSql\Connection $connection, string $user, #[\SensitiveParameter] string $password): bool {}
+
+    function pg_put_copy_data(PgSql\Connection $connection, string $cmd): int {}
+    function pg_put_copy_end(PgSql\Connection $connection, ?string $error = null): int {}
+
+    /**
+     * @param resource $socket
+     */
+    function pg_socket_poll($socket, int $read, int $write, int $timeout = -1): int {}
 }
 
 namespace PgSql {

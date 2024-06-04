@@ -174,48 +174,16 @@ encodePtr get_encoder(sdlPtr sdl, const char *ns, const char *type)
 	return enc;
 }
 
-encodePtr get_encoder_ex(sdlPtr sdl, const char *nscat, int len)
+encodePtr get_encoder_ex(sdlPtr sdl, const char *nscat, size_t len)
 {
 	encodePtr enc;
 
-	if ((enc = zend_hash_str_find_ptr(&SOAP_GLOBAL(defEnc), (char*)nscat, len)) != NULL) {
+	if ((enc = zend_hash_str_find_ptr(&SOAP_GLOBAL(defEnc), nscat, len)) != NULL) {
 		return enc;
-	} else if (sdl && sdl->encoders && (enc = zend_hash_str_find_ptr(sdl->encoders, (char*)nscat, len)) != NULL) {
+	} else if (sdl && sdl->encoders && (enc = zend_hash_str_find_ptr(sdl->encoders, nscat, len)) != NULL) {
 		return enc;
 	}
 	return NULL;
-}
-
-sdlBindingPtr get_binding_from_type(sdlPtr sdl, sdlBindingType type)
-{
-	sdlBindingPtr binding;
-
-	if (sdl == NULL) {
-		return NULL;
-	}
-
-	ZEND_HASH_MAP_FOREACH_PTR(sdl->bindings, binding) {
-		if (binding->bindingType == type) {
-			return binding;
-		}
-	} ZEND_HASH_FOREACH_END();
-	return NULL;
-}
-
-sdlBindingPtr get_binding_from_name(sdlPtr sdl, char *name, char *ns)
-{
-	sdlBindingPtr binding;
-	smart_str key = {0};
-
-	smart_str_appends(&key, ns);
-	smart_str_appendc(&key, ':');
-	smart_str_appends(&key, name);
-	smart_str_0(&key);
-
-	binding = zend_hash_find_ptr(sdl->bindings, key.s);
-
-	smart_str_free(&key);
-	return binding;
 }
 
 static int is_wsdl_element(xmlNodePtr node)
