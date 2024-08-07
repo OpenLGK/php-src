@@ -16,7 +16,7 @@
 */
 
 #ifdef HAVE_CONFIG_H
-#include "config.h"
+#include <config.h>
 #endif
 
 #include "php.h"
@@ -50,7 +50,7 @@ static zend_always_inline void reset_objmap_cache(dom_nnodemap_object *objmap)
 	objmap->cached_length = -1;
 }
 
-static xmlNodePtr dom_nodelist_iter_start_first_child(xmlNodePtr nodep)
+xmlNodePtr dom_nodelist_iter_start_first_child(xmlNodePtr nodep)
 {
 	if (nodep->type == XML_ENTITY_REF_NODE) {
 		/* See entityreference.c */

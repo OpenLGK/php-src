@@ -16,7 +16,7 @@
  */
 
 #ifdef HAVE_CONFIG_H
-#include "config.h"
+#include <config.h>
 #endif
 
 #include "php.h"
@@ -32,7 +32,6 @@
 #include <fcntl.h>
 
 #include "php_ini.h"
-#include "SAPI.h"
 #include "rfc1867.h"
 #include "php_variables.h"
 #include "php_session.h"
@@ -133,7 +132,7 @@ static inline void php_session_cleanup_filename(void) /* {{{ */
 /* }}} */
 
 /* Dispatched by RSHUTDOWN and by php_session_destroy */
-static inline void php_rshutdown_session_globals(void) /* {{{ */
+static void php_rshutdown_session_globals(void) /* {{{ */
 {
 	/* Do NOT destroy PS(mod_user_names) here! */
 	if (!Z_ISUNDEF(PS(http_session_vars))) {
@@ -361,17 +360,15 @@ PHPAPI zend_result php_session_valid_key(const char *key) /* {{{ */
 	size_t len;
 	const char *p;
 	char c;
-	zend_result ret = SUCCESS;
 
 	for (p = key; (c = *p); p++) {
-		/* valid characters are a..z,A..Z,0..9 */
+		/* valid characters are [a-z], [A-Z], [0-9], - (hyphen) and , (comma) */
 		if (!((c >= 'a' && c <= 'z')
 				|| (c >= 'A' && c <= 'Z')
 				|| (c >= '0' && c <= '9')
 				|| c == ','
 				|| c == '-')) {
-			ret = FAILURE;
-			break;
+			return FAILURE;
 		}
 	}
 
@@ -380,10 +377,10 @@ PHPAPI zend_result php_session_valid_key(const char *key) /* {{{ */
 	/* Somewhat arbitrary length limit here, but should be way more than
 	   anyone needs and avoids file-level warnings later on if we exceed MAX_PATH */
 	if (len == 0 || len > PS_MAX_SID_LENGTH) {
-		ret = FAILURE;
+		return FAILURE;
 	}
 
-	return ret;
+	return SUCCESS;
 }
 /* }}} */
 
@@ -754,6 +751,9 @@ static PHP_INI_MH(OnUpdateSidLength) /* {{{ */
 	SESSION_CHECK_ACTIVE_STATE;
 	SESSION_CHECK_OUTPUT_STATE;
 	val = ZEND_STRTOL(ZSTR_VAL(new_value), &endptr, 10);
+	if (val != 32) {
+		zend_error(E_DEPRECATED, "session.sid_length INI setting is deprecated");
+	}
 	if (endptr && (*endptr == '\0')
 		&& val >= 22 && val <= PS_MAX_SID_LENGTH) {
 		/* Numeric value */
@@ -774,6 +774,9 @@ static PHP_INI_MH(OnUpdateSidBits) /* {{{ */
 	SESSION_CHECK_ACTIVE_STATE;
 	SESSION_CHECK_OUTPUT_STATE;
 	val = ZEND_STRTOL(ZSTR_VAL(new_value), &endptr, 10);
+	if (val != 4) {
+		zend_error(E_DEPRECATED, "session.sid_bits_per_character INI setting is deprecated");
+	}
 	if (endptr && (*endptr == '\0')
 		&& val >= 4 && val <=6) {
 		/* Numeric value */
@@ -2375,7 +2378,7 @@ PHP_FUNCTION(session_create_id)
 	zend_string *prefix = NULL, *new_id;
 	smart_str id = {0};
 
-	if (zend_parse_parameters(ZEND_NUM_ARGS(), "|S", &prefix) == FAILURE) {
+	if (zend_parse_parameters(ZEND_NUM_ARGS(), "|P", &prefix) == FAILURE) {
 		RETURN_THROWS();
 	}
 

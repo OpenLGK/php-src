@@ -16,13 +16,14 @@
 */
 
 #ifdef HAVE_CONFIG_H
-#include "config.h"
+#include <config.h>
 #endif
 
 #include "php.h"
 #if defined(HAVE_LIBXML) && defined(HAVE_DOM)
 #include "php_dom.h"
 #include "namespace_compat.h"
+#include "private_data.h"
 #include "xml_serializer.h"
 #include "internal_helpers.h"
 #include "dom_properties.h"
@@ -49,12 +50,8 @@ zend_result dom_document_doctype_read(dom_object *obj, zval *retval)
 	DOM_PROP_NODE(xmlDocPtr, docp, obj);
 
 	xmlDtdPtr dtdptr = xmlGetIntSubset(docp);
-	if (!dtdptr) {
-		ZVAL_NULL(retval);
-		return SUCCESS;
-	}
 
-	php_dom_create_object((xmlNodePtr) dtdptr, retval, obj);
+	php_dom_create_nullable_object((xmlNodePtr) dtdptr, retval, obj);
 	return SUCCESS;
 }
 
@@ -82,12 +79,8 @@ zend_result dom_document_document_element_read(dom_object *obj, zval *retval)
 	DOM_PROP_NODE(xmlDocPtr, docp, obj);
 
 	xmlNodePtr root = xmlDocGetRootElement(docp);
-	if (!root) {
-		ZVAL_NULL(retval);
-		return SUCCESS;
-	}
 
-	php_dom_create_object(root, retval, obj);
+	php_dom_create_nullable_object(root, retval, obj);
 	return SUCCESS;
 }
 
@@ -1250,7 +1243,7 @@ PHP_METHOD(DOMDocument, __construct)
 	dom_object *intern;
 	char *encoding, *version = NULL;
 	size_t encoding_len = 0, version_len = 0;
-	int refcount;
+	unsigned int refcount;
 
 	if (zend_parse_parameters(ZEND_NUM_ARGS(), "|ss", &version, &version_len, &encoding, &encoding_len) == FAILURE) {
 		RETURN_THROWS();
@@ -1285,7 +1278,7 @@ PHP_METHOD(DOMDocument, __construct)
 }
 /* }}} end DOMDocument::__construct */
 
-const char *_dom_get_valid_file_path(const char *source, char *resolved_path, int resolved_path_len ) /* {{{ */
+const char *dom_get_valid_file_path(const char *source, char *resolved_path, int resolved_path_len ) /* {{{ */
 {
 	xmlURI *uri;
 	xmlChar *escsource;
@@ -1372,7 +1365,7 @@ xmlDocPtr dom_document_parser(zval *id, dom_load_mode mode, const char *source, 
 			zend_argument_value_error(1, "must not contain any null bytes");
 			return NULL;
 		}
-		const char *file_dest = _dom_get_valid_file_path(source, resolved_path, MAXPATHLEN);
+		const char *file_dest = dom_get_valid_file_path(source, resolved_path, MAXPATHLEN);
 		if (file_dest) {
 			ctxt = xmlCreateFileParserCtxt(file_dest);
 		}
@@ -1429,11 +1422,13 @@ xmlDocPtr dom_document_parser(zval *id, dom_load_mode mode, const char *source, 
 	if (keep_blanks == 0 && ! (options & XML_PARSE_NOBLANKS)) {
 		options |= XML_PARSE_NOBLANKS;
 	}
+	if (recover) {
+		options |= XML_PARSE_RECOVER;
+	}
 
 	php_libxml_sanitize_parse_ctxt_options(ctxt);
 	xmlCtxtUseOptions(ctxt, options);
 
-	ctxt->recovery = recover;
 	if (recover) {
 		old_error_reporting = EG(error_reporting);
 		EG(error_reporting) = old_error_reporting | E_WARNING;
@@ -1443,7 +1438,7 @@ xmlDocPtr dom_document_parser(zval *id, dom_load_mode mode, const char *source, 
 
 	if (ctxt->wellFormed || recover) {
 		ret = ctxt->myDoc;
-		if (ctxt->recovery) {
+		if (recover) {
 			EG(error_reporting) = old_error_reporting;
 		}
 		/* If loading from memory, set the base reference uri for the document */
@@ -1481,7 +1476,7 @@ static void php_dom_finish_loading_document(zval *this, zval *return_value, xmlD
 			php_libxml_decrement_node_ptr((php_libxml_node_object *) intern);
 			doc_prop = intern->document->doc_props;
 			intern->document->doc_props = NULL;
-			int refcount = php_libxml_decrement_doc_ref((php_libxml_node_object *)intern);
+			unsigned int refcount = php_libxml_decrement_doc_ref((php_libxml_node_object *)intern);
 			if (refcount != 0) {
 				docp->_private = NULL;
 			}
@@ -1706,17 +1701,69 @@ static void php_dom_remove_xinclude_nodes(xmlNodePtr cur) /* {{{ */
 }
 /* }}} */
 
+static void dom_xinclude_strip_references(xmlNodePtr basep)
+{
+	php_libxml_node_free_resource(basep);
+
+	xmlNodePtr current = basep->children;
+
+	while (current) {
+		php_libxml_node_free_resource(current);
+		current = php_dom_next_in_tree_order(current, basep);
+	}
+}
+
+/* See GH-14702.
+ * We have to remove userland references to xinclude fallback nodes because libxml2 will make clones of these
+ * and remove the original nodes. If the originals are removed while there are still userland references
+ * this will cause memory corruption. */
+static void dom_xinclude_strip_fallback_references(const xmlNode *basep)
+{
+	xmlNodePtr current = basep->children;
+
+	while (current) {
+		if (current->type == XML_ELEMENT_NODE && current->ns != NULL && current->_private != NULL
+			&& xmlStrEqual(current->name, XINCLUDE_FALLBACK)
+			&& (xmlStrEqual(current->ns->href, XINCLUDE_NS) || xmlStrEqual(current->ns->href, XINCLUDE_OLD_NS))) {
+			dom_xinclude_strip_references(current);
+		}
+
+		current = php_dom_next_in_tree_order(current, basep);
+	}
+}
+
+static int dom_perform_xinclude(xmlDocPtr docp, dom_object *intern, zend_long flags)
+{
+	dom_xinclude_strip_fallback_references((const xmlNode *) docp);
+
+	PHP_LIBXML_SANITIZE_GLOBALS(xinclude);
+	int err = xmlXIncludeProcessFlags(docp, (int)flags);
+	PHP_LIBXML_RESTORE_GLOBALS(xinclude);
+
+	/* XML_XINCLUDE_START and XML_XINCLUDE_END nodes need to be removed as these
+	are added via xmlXIncludeProcess to mark beginning and ending of xincluded document
+	but are not wanted in resulting document - must be done even if err as it could fail after
+	having processed some xincludes */
+	xmlNodePtr root = docp->children;
+	while (root && root->type != XML_ELEMENT_NODE && root->type != XML_XINCLUDE_START) {
+		root = root->next;
+	}
+	if (root) {
+		php_dom_remove_xinclude_nodes(root);
+	}
+
+	php_libxml_invalidate_node_list_cache(intern->document);
+
+	return err;
+}
+
 /* {{{ Substitutues xincludes in a DomDocument */
 PHP_METHOD(DOMDocument, xinclude)
 {
-	zval *id;
 	xmlDoc *docp;
-	xmlNodePtr root;
 	zend_long flags = 0;
-	int err;
 	dom_object *intern;
 
-	id = ZEND_THIS;
 	if (zend_parse_parameters(ZEND_NUM_ARGS(), "|l", &flags) == FAILURE) {
 		RETURN_THROWS();
 	}
@@ -1726,30 +1773,40 @@ PHP_METHOD(DOMDocument, xinclude)
 		RETURN_FALSE;
 	}
 
-	DOM_GET_OBJ(docp, id, xmlDocPtr, intern);
+	DOM_GET_OBJ(docp, ZEND_THIS, xmlDocPtr, intern);
 
-	PHP_LIBXML_SANITIZE_GLOBALS(xinclude);
-	err = xmlXIncludeProcessFlags(docp, (int)flags);
-	PHP_LIBXML_RESTORE_GLOBALS(xinclude);
-
-	/* XML_XINCLUDE_START and XML_XINCLUDE_END nodes need to be removed as these
-	are added via xmlXIncludeProcess to mark beginning and ending of xincluded document
-	but are not wanted in resulting document - must be done even if err as it could fail after
-	having processed some xincludes */
-	root = (xmlNodePtr) docp->children;
-	while(root && root->type != XML_ELEMENT_NODE && root->type != XML_XINCLUDE_START) {
-		root = root->next;
-	}
-	if (root) {
-		php_dom_remove_xinclude_nodes(root);
-	}
-
-	php_libxml_invalidate_node_list_cache(intern->document);
+	int err = dom_perform_xinclude(docp, intern, flags);
 
 	if (err) {
 		RETVAL_LONG(err);
 	} else {
 		RETVAL_FALSE;
+	}
+}
+
+PHP_METHOD(Dom_XMLDocument, xinclude)
+{
+	xmlDoc *docp;
+	zend_long flags = 0;
+	dom_object *intern;
+
+	if (zend_parse_parameters(ZEND_NUM_ARGS(), "|l", &flags) == FAILURE) {
+		RETURN_THROWS();
+	}
+
+	if (ZEND_LONG_EXCEEDS_INT(flags)) {
+		zend_argument_value_error(1, "is too large");
+		RETURN_THROWS();
+	}
+
+	DOM_GET_OBJ(docp, ZEND_THIS, xmlDocPtr, intern);
+
+	int err = dom_perform_xinclude(docp, intern, flags);
+
+	if (err < 0) {
+		php_dom_throw_error(INVALID_MODIFICATION_ERR, /* strict */ true);
+	} else {
+		RETURN_LONG(err);
 	}
 }
 /* }}} */
@@ -1789,7 +1846,7 @@ PHP_METHOD(DOMDocument, validate)
 /* }}} */
 
 #ifdef LIBXML_SCHEMAS_ENABLED
-static void _dom_document_schema_validate(INTERNAL_FUNCTION_PARAMETERS, int type) /* {{{ */
+static void dom_document_schema_validate(INTERNAL_FUNCTION_PARAMETERS, int type) /* {{{ */
 {
 	zval *id;
 	xmlDoc *docp;
@@ -1826,7 +1883,7 @@ static void _dom_document_schema_validate(INTERNAL_FUNCTION_PARAMETERS, int type
 			zend_argument_value_error(1, "must not contain any null bytes");
 			RETURN_THROWS();
 		}
-		valid_file = _dom_get_valid_file_path(source, resolved_path, MAXPATHLEN);
+		valid_file = dom_get_valid_file_path(source, resolved_path, MAXPATHLEN);
 		if (!valid_file) {
 			PHP_LIBXML_RESTORE_GLOBALS(new_parser_ctxt);
 			php_error_docref(NULL, E_WARNING, "Invalid Schema file source");
@@ -1889,18 +1946,18 @@ static void _dom_document_schema_validate(INTERNAL_FUNCTION_PARAMETERS, int type
 /* {{{ */
 PHP_METHOD(DOMDocument, schemaValidate)
 {
-	_dom_document_schema_validate(INTERNAL_FUNCTION_PARAM_PASSTHRU, DOM_LOAD_FILE);
+	dom_document_schema_validate(INTERNAL_FUNCTION_PARAM_PASSTHRU, DOM_LOAD_FILE);
 }
 /* }}} end dom_document_schema_validate_file */
 
 /* {{{ */
 PHP_METHOD(DOMDocument, schemaValidateSource)
 {
-	_dom_document_schema_validate(INTERNAL_FUNCTION_PARAM_PASSTHRU, DOM_LOAD_STRING);
+	dom_document_schema_validate(INTERNAL_FUNCTION_PARAM_PASSTHRU, DOM_LOAD_STRING);
 }
 /* }}} end dom_document_schema_validate */
 
-static void _dom_document_relaxNG_validate(INTERNAL_FUNCTION_PARAMETERS, int type) /* {{{ */
+static void dom_document_relaxNG_validate(INTERNAL_FUNCTION_PARAMETERS, int type) /* {{{ */
 {
 	zval *id;
 	xmlDoc *docp;
@@ -1932,7 +1989,7 @@ static void _dom_document_relaxNG_validate(INTERNAL_FUNCTION_PARAMETERS, int typ
 			zend_argument_value_error(1, "must not contain any null bytes");
 			RETURN_THROWS();
 		}
-		valid_file = _dom_get_valid_file_path(source, resolved_path, MAXPATHLEN);
+		valid_file = dom_get_valid_file_path(source, resolved_path, MAXPATHLEN);
 		if (!valid_file) {
 			php_error_docref(NULL, E_WARNING, "Invalid RelaxNG file source");
 			RETURN_FALSE;
@@ -1986,14 +2043,14 @@ static void _dom_document_relaxNG_validate(INTERNAL_FUNCTION_PARAMETERS, int typ
 /* {{{ */
 PHP_METHOD(DOMDocument, relaxNGValidate)
 {
-	_dom_document_relaxNG_validate(INTERNAL_FUNCTION_PARAM_PASSTHRU, DOM_LOAD_FILE);
+	dom_document_relaxNG_validate(INTERNAL_FUNCTION_PARAM_PASSTHRU, DOM_LOAD_FILE);
 }
 /* }}} end dom_document_relaxNG_validate_file */
 
 /* {{{ */
 PHP_METHOD(DOMDocument, relaxNGValidateSource)
 {
-	_dom_document_relaxNG_validate(INTERNAL_FUNCTION_PARAM_PASSTHRU, DOM_LOAD_STRING);
+	dom_document_relaxNG_validate(INTERNAL_FUNCTION_PARAM_PASSTHRU, DOM_LOAD_STRING);
 }
 /* }}} end dom_document_relaxNG_validate_xml */
 

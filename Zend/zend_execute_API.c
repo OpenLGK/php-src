@@ -371,6 +371,29 @@ ZEND_API void zend_shutdown_executor_values(bool fast_shutdown)
 						}
 					}
 				} ZEND_HASH_FOREACH_END();
+
+				if (ce->num_hooked_props) {
+					zend_property_info *prop_info;
+					ZEND_HASH_MAP_FOREACH_PTR(&ce->properties_info, prop_info) {
+						if (prop_info->ce == ce) {
+							if (prop_info->hooks) {
+								for (uint32_t i = 0; i < ZEND_PROPERTY_HOOK_COUNT; i++) {
+									if (prop_info->hooks[i]) {
+										ZEND_ASSERT(ZEND_USER_CODE(prop_info->hooks[i]->type));
+										op_array = &prop_info->hooks[i]->op_array;
+										if (ZEND_MAP_PTR(op_array->static_variables_ptr)) {
+											HashTable *ht = ZEND_MAP_PTR_GET(op_array->static_variables_ptr);
+											if (ht) {
+												zend_array_destroy(ht);
+												ZEND_MAP_PTR_SET(op_array->static_variables_ptr, NULL);
+											}
+										}
+									}
+								}
+							}
+						}
+					} ZEND_HASH_FOREACH_END();
+				}
 			}
 		} ZEND_HASH_FOREACH_END();
 
@@ -1627,7 +1650,7 @@ void zend_unset_timeout(void) /* {{{ */
 		}
 		tq_timer = NULL;
 	}
-#elif ZEND_MAX_EXECUTION_TIMERS
+#elif defined(ZEND_MAX_EXECUTION_TIMERS)
 	zend_max_execution_timer_settime(0);
 #elif defined(HAVE_SETITIMER)
 	if (EG(timeout_seconds)) {

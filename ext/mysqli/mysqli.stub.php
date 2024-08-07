@@ -436,11 +436,6 @@ const MYSQLI_TYPE_BIT = UNKNOWN;
  * @cvalue MYSQL_SET_CHARSET_NAME
  */
 const MYSQLI_SET_CHARSET_NAME = UNKNOWN;
-/**
- * @var int
- * @cvalue MYSQL_SET_CHARSET_DIR
- */
-const MYSQLI_SET_CHARSET_DIR = UNKNOWN;
 
 /* bind support */
 /**
@@ -826,8 +821,8 @@ class mysqli
     /**
      * @tentative-return-type
      * @alias mysqli_get_client_info
-     * @deprecated 8.1.0
      */
+    #[\Deprecated(since: '8.1', message: 'use mysqli_get_client_info() instead')]
     public function get_client_info(): string {}
 
     /**
@@ -850,9 +845,9 @@ class mysqli
     public function get_warnings(): mysqli_warning|false {}
 
     /**
-     * @deprecated
      * @return bool|null
      * */
+    #[\Deprecated(since: '8.1', message: 'replace calls to parent::init() with parent::__construct()')]
     public function init() {}
 
     /**

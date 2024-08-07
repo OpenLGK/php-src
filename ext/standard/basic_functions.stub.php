@@ -375,26 +375,6 @@ const PHP_ROUND_HALF_EVEN = UNKNOWN;
  * @cvalue PHP_ROUND_HALF_ODD
  */
 const PHP_ROUND_HALF_ODD = UNKNOWN;
-/**
- * @var int
- * @cvalue PHP_ROUND_CEILING
- */
-const PHP_ROUND_CEILING = UNKNOWN;
-/**
- * @var int
- * @cvalue PHP_ROUND_FLOOR
- */
-const PHP_ROUND_FLOOR = UNKNOWN;
-/**
- * @var int
- * @cvalue PHP_ROUND_TOWARD_ZERO
- */
-const PHP_ROUND_TOWARD_ZERO = UNKNOWN;
-/**
- * @var int
- * @cvalue PHP_ROUND_AWAY_FROM_ZERO
- */
-const PHP_ROUND_AWAY_FROM_ZERO = UNKNOWN;
 
 /* crypt.c */
 
@@ -2024,7 +2004,7 @@ function show_source(string $filename, bool $return = false): string|bool {}
 function php_strip_whitespace(string $filename): string {}
 
 /** @refcount 1 */
-function highlight_string(string $string, bool $return = false): string|bool {}
+function highlight_string(string $string, bool $return = false): string|true {}
 
 function ini_get(string $option): string|false {}
 
@@ -2050,7 +2030,7 @@ function set_include_path(string $include_path): string|false {}
 function get_include_path(): string|false {}
 
 /** @refcount 1 */
-function print_r(mixed $value, bool $return = false): string|bool {}
+function print_r(mixed $value, bool $return = false): string|true {}
 
 function connection_aborted(): int {}
 
@@ -2136,9 +2116,9 @@ function crypt(#[\SensitiveParameter] string $string, string $salt): string {}
 #ifdef HAVE_STRPTIME
 /**
  * @return array<string, int|string>|false
- * @deprecated
  * @refcount 1
  */
+#[\Deprecated(since: '8.2', message: 'use date_parse_from_format() (for locale-independent parsing), or IntlDateFormatter::parse() (for locale-dependent parsing) instead')]
 function strptime(string $timestamp, string $format): array|false {}
 #endif
 
@@ -2191,7 +2171,7 @@ function getmxrr(string $hostname, &$hosts, &$weights = null): bool {}
 
 /* net.c */
 
-#if (defined(PHP_WIN32) || HAVE_GETIFADDRS || defined(__PASE__))
+#if (defined(PHP_WIN32) || defined(HAVE_GETIFADDRS) || defined(__PASE__))
 function net_get_interfaces(): array|false {}
 #endif
 
@@ -2301,7 +2281,7 @@ function get_html_translation_table(int $table = HTML_SPECIALCHARS, int $flags =
 
 function assert(mixed $assertion, Throwable|string|null $description = null): bool {}
 
-/** @deprecated */
+#[\Deprecated(since: '8.3')]
 function assert_options(int $option, mixed $value = UNKNOWN): mixed {}
 
 /* string.c */
@@ -2655,15 +2635,15 @@ function substr_compare(string $haystack, string $needle, int $offset, ?int $len
 /**
  * @compile-time-eval
  * @refcount 1
- * @deprecated
  */
+#[\Deprecated(since: '8.2', message: 'visit the php.net documentation for various alternatives')]
 function utf8_encode(string $string): string {}
 
 /**
  * @compile-time-eval
  * @refcount 1
- * @deprecated
  */
+#[\Deprecated(since: '8.2', message: 'visit the php.net documentation for various alternatives')]
 function utf8_decode(string $string): string {}
 
 /* dir.c */
@@ -3145,8 +3125,19 @@ function ceil(int|float $num): float {}
 /** @compile-time-eval */
 function floor(int|float $num): float {}
 
+enum RoundingMode {
+    case HalfAwayFromZero;
+    case HalfTowardsZero;
+    case HalfEven;
+    case HalfOdd;
+    case TowardsZero;
+    case AwayFromZero;
+    case NegativeInfinity;
+    case PositiveInfinity;
+}
+
 /** @compile-time-eval */
-function round(int|float $num, int $precision = 0, int $mode = PHP_ROUND_HALF_UP): float {}
+function round(int|float $num, int $precision = 0, int|RoundingMode $mode = RoundingMode::HalfAwayFromZero): float {}
 
 /** @compile-time-eval */
 function sin(float $num): float {}

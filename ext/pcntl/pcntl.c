@@ -24,13 +24,11 @@
 #endif
 
 #ifdef HAVE_CONFIG_H
-#include "config.h"
+#include <config.h>
 #endif
 
 #include "php.h"
-#include "php_ini.h"
 #include "ext/standard/info.h"
-#include "php_pcntl.h"
 #include "php_signal.h"
 #include "php_ticks.h"
 #include "zend_fibers.h"
@@ -41,6 +39,22 @@
 #include <sys/resource.h>
 #endif
 
+#ifdef HAVE_WAITID
+#if defined (HAVE_DECL_P_ALL) && HAVE_DECL_P_ALL == 1
+#define HAVE_POSIX_IDTYPES 1
+#endif
+#if defined (HAVE_DECL_P_PIDFD) && HAVE_DECL_P_PIDFD == 1
+#define HAVE_LINUX_IDTYPES 1
+#endif
+#if defined (HAVE_DECL_P_UID) && HAVE_DECL_P_UID == 1
+#define HAVE_NETBSD_IDTYPES 1
+#endif
+#if defined (HAVE_DECL_P_JAILID) && HAVE_DECL_P_JAILID == 1
+#define HAVE_FREEBSD_IDTYPES 1
+#endif
+#endif
+
+#include "php_pcntl.h"
 #include <errno.h>
 #if defined(HAVE_UNSHARE) || defined(HAVE_SCHED_SETAFFINITY) || defined(HAVE_SCHED_GETCPU)
 #include <sched.h>
@@ -109,7 +123,6 @@ typedef psetid_t cpu_set_t;
 
 #if defined(HAVE_PTHREAD_SET_QOS_CLASS_SELF_NP)
 #include <pthread/qos.h>
-static zend_class_entry *QosClass_ce;
 #endif
 
 #ifdef HAVE_PIDFD_OPEN
@@ -130,6 +143,7 @@ static zend_class_entry *QosClass_ce;
 #include "Zend/zend_max_execution_timer.h"
 
 #include "pcntl_arginfo.h"
+static zend_class_entry *QosClass_ce;
 
 ZEND_DECLARE_MODULE_GLOBALS(pcntl)
 static PHP_GINIT_FUNCTION(pcntl);
@@ -198,9 +212,7 @@ PHP_RINIT_FUNCTION(pcntl)
 
 PHP_MINIT_FUNCTION(pcntl)
 {
-#if defined(HAVE_PTHREAD_SET_QOS_CLASS_SELF_NP)
-	QosClass_ce = register_class_QosClass();
-#endif
+	QosClass_ce = register_class_Pcntl_QosClass();
 	register_pcntl_symbols(module_number);
 	orig_interrupt_function = zend_interrupt_function;
 	zend_interrupt_function = pcntl_interrupt_function;
@@ -385,6 +397,39 @@ PHP_FUNCTION(pcntl_waitpid)
 	RETURN_LONG((zend_long) child_id);
 }
 /* }}} */
+
+#if defined (HAVE_WAITID) && defined (HAVE_POSIX_IDTYPES) && defined (HAVE_DECL_WEXITED) && HAVE_DECL_WEXITED == 1
+PHP_FUNCTION(pcntl_waitid)
+{
+	zend_long idtype = P_ALL;
+	zend_long id = 0;
+	bool id_is_null = 1;
+	zval *user_siginfo = NULL;
+	zend_long options = WEXITED;
+
+	ZEND_PARSE_PARAMETERS_START(0, 4)
+		Z_PARAM_OPTIONAL
+		Z_PARAM_LONG(idtype)
+		Z_PARAM_LONG_OR_NULL(id, id_is_null)
+		Z_PARAM_ZVAL(user_siginfo)
+		Z_PARAM_LONG(options)
+	ZEND_PARSE_PARAMETERS_END();
+
+	errno = 0;
+	siginfo_t siginfo;
+
+	int status = waitid((idtype_t) idtype, (id_t) id, &siginfo, (int) options);
+
+	if (status == -1) {
+		PCNTL_G(last_error) = errno;
+		RETURN_FALSE;
+	}
+
+	pcntl_siginfo_to_zval(SIGCHLD, &siginfo, user_siginfo);
+
+	RETURN_TRUE;
+}
+#endif
 
 /* {{{ Waits on or returns the status of a forked child as defined by the waitpid() system call */
 PHP_FUNCTION(pcntl_wait)
@@ -714,8 +759,7 @@ PHP_FUNCTION(pcntl_signal)
 	if (!PCNTL_G(spares)) {
 		/* since calling malloc() from within a signal handler is not portable,
 		 * pre-allocate a few records for recording signals */
-		int i;
-		for (i = 0; i < PCNTL_G(num_signals); i++) {
+		for (unsigned int i = 0; i < PCNTL_G(num_signals); i++) {
 			struct php_pcntl_pending_signal *psig;
 
 			psig = emalloc(sizeof(*psig));
@@ -903,7 +947,7 @@ PHP_FUNCTION(pcntl_sigprocmask)
 			RETURN_THROWS();
 		}
 
-		for (int signal_no = 1; signal_no < PCNTL_G(num_signals); ++signal_no) {
+		for (unsigned int signal_no = 1; signal_no < PCNTL_G(num_signals); ++signal_no) {
 			if (sigismember(&old_set, signal_no) != 1) {
 				continue;
 			}
@@ -1656,7 +1700,7 @@ PHP_FUNCTION(pcntl_setcpuaffinity)
 
 	// 0 == getpid in this context, we're just saving a syscall
 	pid = pid_is_null ? 0 : pid;
-	zend_ulong maxcpus = (zend_ulong)sysconf(_SC_NPROCESSORS_CONF);
+	zend_long maxcpus = sysconf(_SC_NPROCESSORS_CONF);
 	PCNTL_CPU_ZERO(mask);
 
 	ZEND_HASH_FOREACH_VAL(Z_ARRVAL_P(hmask), ncpu) {
@@ -1687,7 +1731,7 @@ PHP_FUNCTION(pcntl_setcpuaffinity)
 			zend_argument_value_error(2, "cpu id must be between 0 and " ZEND_ULONG_FMT " (" ZEND_LONG_FMT ")", maxcpus, cpu);
 			RETURN_THROWS();
 		}
-		       
+
 		if (!PCNTL_CPU_ISSET(cpu, mask)) {
 			PCNTL_CPU_SET(cpu, mask);
 		}

@@ -17,7 +17,7 @@
 #define ZEND_INCLUDE_FULL_WINDOWS_HEADERS
 
 #ifdef HAVE_CONFIG_H
-#include "config.h"
+#include <config.h>
 #endif
 
 #include "php.h"
@@ -52,8 +52,6 @@
 # endif
 #endif /* ZTS && HAVE_CURL_OLD_OPENSSL */
 /* }}} */
-
-#define SMART_STR_PREALLOC 4096
 
 #include "zend_smart_str.h"
 #include "ext/standard/info.h"
@@ -257,7 +255,7 @@ PHP_MINFO_FUNCTION(curl)
 	php_info_print_table_start();
 	php_info_print_table_row(2, "cURL support",    "enabled");
 	php_info_print_table_row(2, "cURL Information", d->version);
-	sprintf(str, "%d", d->age);
+	snprintf(str, sizeof(str), "%d", d->age);
 	php_info_print_table_row(2, "Age", str);
 
 	/* To update on each new cURL release using src/main.c in cURL sources */
@@ -324,7 +322,7 @@ PHP_MINFO_FUNCTION(curl)
 	n = 0;
 	p = (char **) d->protocols;
 	while (*p != NULL) {
-			n += sprintf(str + n, "%s%s", *p, *(p + 1) != NULL ? ", " : "");
+			n += snprintf(str + n, sizeof(str) - n, "%s%s", *p, *(p + 1) != NULL ? ", " : "");
 			p++;
 	}
 	php_info_print_table_row(2, "Protocols", str);
@@ -788,7 +786,7 @@ static size_t curl_read(char *data, size_t size, size_t nmemb, void *ctx)
 			if (!Z_ISUNDEF(retval)) {
 				_php_curl_verify_handlers(ch, /* reporterror */ true);
 				if (Z_TYPE(retval) == IS_STRING) {
-					length = MIN((int) (size * nmemb), Z_STRLEN(retval));
+					length = MIN((size * nmemb), Z_STRLEN(retval));
 					memcpy(data, Z_STRVAL(retval), length);
 				} else if (Z_TYPE(retval) == IS_LONG) {
 					length = Z_LVAL_P(&retval);
@@ -2628,7 +2626,11 @@ PHP_FUNCTION(curl_error)
 
 	if (ch->err.no) {
 		ch->err.str[CURL_ERROR_SIZE] = 0;
-		RETURN_STRING(ch->err.str);
+		if (strlen(ch->err.str) > 0) {
+			RETURN_STRING(ch->err.str);
+		} else {
+			RETURN_STRING(curl_easy_strerror(ch->err.no));
+		}
 	} else {
 		RETURN_EMPTY_STRING();
 	}

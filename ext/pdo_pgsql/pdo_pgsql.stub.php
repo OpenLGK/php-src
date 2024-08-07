@@ -8,7 +8,7 @@ namespace Pdo;
  * @strict-properties
  * @not-serializable
  */
-class Pgsql extends PDO
+class Pgsql extends \PDO
 {
     /** @cvalue PDO_PGSQL_ATTR_DISABLE_PREPARES */
     public const int ATTR_DISABLE_PREPARES = UNKNOWN;
@@ -56,4 +56,6 @@ class Pgsql extends PDO
     public function getNotify(int $fetchMode = \PDO::FETCH_DEFAULT, int $timeoutMilliseconds = 0): array|false {}
 
     public function getPid(): int {}
+
+    public function setNoticeCallback(?callable $callback): void {}
 }

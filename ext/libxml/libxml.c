@@ -22,6 +22,7 @@
 #include "php.h"
 #include "SAPI.h"
 
+#include "zend_attributes.h"
 #include "zend_variables.h"
 #include "ext/standard/info.h"
 #include "ext/standard/file.h"
@@ -275,7 +276,12 @@ static void php_libxml_node_free(xmlNodePtr node)
 			xmlFreeDtd(dtd);
 			break;
 		}
-		case XML_ELEMENT_NODE:
+		case XML_ELEMENT_NODE: {
+			if (node->ns && (((uintptr_t) node->ns->_private) & 1) == LIBXML_NS_TAG_HOOK) {
+				/* Special destruction routine hook should be called because it belongs to a "special" namespace. */
+				php_libxml_private_data_header *header = (php_libxml_private_data_header *) (((uintptr_t) node->ns->_private) & ~1);
+				header->ns_hook(header, node);
+			}
 			if (node->nsDef && node->doc) {
 				/* Make the namespace declaration survive the destruction of the holding element.
 				 * This prevents a use-after-free on the namespace declaration.
@@ -307,6 +313,7 @@ static void php_libxml_node_free(xmlNodePtr node)
 			}
 			xmlFreeNode(node);
 			break;
+		}
 		default:
 			xmlFreeNode(node);
 			break;
@@ -329,9 +336,13 @@ PHP_LIBXML_API void php_libxml_node_free_list(xmlNodePtr node)
 					/* This ensures that namespace references in this subtree are defined within this subtree,
 					 * otherwise a use-after-free would be possible when the original namespace holder gets freed. */
 					php_libxml_node_ptr *ptr = curnode->_private;
-					php_libxml_node_object *obj = ptr->_private;
-					if (!obj->document || obj->document->class_type < PHP_LIBXML_CLASS_MODERN) {
-						xmlReconciliateNs(curnode->doc, curnode);
+
+					/* Checking in case it runs out of reference */
+					if (ptr->_private) {
+						php_libxml_node_object *obj = ptr->_private;
+						if (!obj->document || obj->document->class_type < PHP_LIBXML_CLASS_MODERN) {
+							xmlReconciliateNs(curnode->doc, curnode);
+						}
 					}
 				}
 				/* Skip freeing */
@@ -540,8 +551,10 @@ php_libxml_input_buffer_create_filename(const char *URI, xmlCharEncoding enc)
 static xmlOutputBufferPtr
 php_libxml_output_buffer_create_filename(const char *URI,
                               xmlCharEncodingHandlerPtr encoder,
-                              int compression ATTRIBUTE_UNUSED)
+                              int compression)
 {
+	ZEND_IGNORE_VALUE(compression);
+
 	xmlOutputBufferPtr ret;
 	xmlURIPtr puri;
 	void *context = NULL;
@@ -837,14 +850,8 @@ PHP_LIBXML_API void php_libxml_pretend_ctx_error_ex(const char *file, int line, 
 	/* Propagate back into libxml */
 	if (LIBXML(error_list)) {
 		xmlErrorPtr last = zend_llist_get_last(LIBXML(error_list));
-		if (last) {
-			if (!last->file) {
-				last->file = strdup(file);
-			}
-			/* Until there is a replacement */
-			ZEND_DIAGNOSTIC_IGNORED_START("-Wdeprecated-declarations")
-			xmlCopyError(last, &xmlLastError);
-			ZEND_DIAGNOSTIC_IGNORED_END
+		if (last && !last->file) {
+			last->file = strdup(file);
 		}
 	}
 }
@@ -1120,7 +1127,13 @@ PHP_FUNCTION(libxml_get_last_error)
 {
 	ZEND_PARSE_PARAMETERS_NONE();
 
-	const xmlError *error = xmlGetLastError();
+	const xmlError *error;
+
+	if (LIBXML(error_list)) {
+		error = zend_llist_get_last(LIBXML(error_list));
+	} else {
+		error = xmlGetLastError();
+	}
 
 	if (error) {
 		php_libxml_create_error_object(return_value, error);
@@ -1309,24 +1322,30 @@ PHP_LIBXML_API int php_libxml_increment_node_ptr(php_libxml_node_object *object,
 	return ret_refcount;
 }
 
+PHP_LIBXML_API int php_libxml_decrement_node_ptr_ref(php_libxml_node_ptr *ptr)
+{
+	ZEND_ASSERT(ptr != NULL);
+
+	int ret_refcount = --ptr->refcount;
+	if (ret_refcount == 0) {
+		if (ptr->node != NULL) {
+			ptr->node->_private = NULL;
+		}
+		if (ptr->_private) {
+			php_libxml_node_object *object = (php_libxml_node_object *) ptr->_private;
+			object->node = NULL;
+		}
+		efree(ptr);
+	}
+	return ret_refcount;
+}
+
 PHP_LIBXML_API int php_libxml_decrement_node_ptr(php_libxml_node_object *object)
 {
-	int ret_refcount = -1;
-	php_libxml_node_ptr *obj_node;
-
 	if (object != NULL && object->node != NULL) {
-		obj_node = (php_libxml_node_ptr *) object->node;
-		ret_refcount = --obj_node->refcount;
-		if (ret_refcount == 0) {
-			if (obj_node->node != NULL) {
-				obj_node->node->_private = NULL;
-			}
-			efree(obj_node);
-		}
-		object->node = NULL;
+		return php_libxml_decrement_node_ptr_ref(object->node);
 	}
-
-	return ret_refcount;
+	return -1;
 }
 
 PHP_LIBXML_API int php_libxml_increment_doc_ref(php_libxml_node_object *object, xmlDocPtr docp)
@@ -1346,6 +1365,7 @@ PHP_LIBXML_API int php_libxml_increment_doc_ref(php_libxml_node_object *object, 
 		object->document->private_data = NULL;
 		object->document->class_type = PHP_LIBXML_CLASS_UNSET;
 		object->document->handlers = &php_libxml_default_document_handlers;
+		object->document->quirks_mode = PHP_LIBXML_NO_QUIRKS;
 	}
 
 	return ret_refcount;
@@ -1355,6 +1375,9 @@ PHP_LIBXML_API int php_libxml_decrement_doc_ref_directly(php_libxml_ref_obj *doc
 {
 	int ret_refcount = --document->refcount;
 	if (ret_refcount == 0) {
+		if (document->private_data != NULL) {
+			document->private_data->dtor(document->private_data);
+		}
 		if (document->ptr != NULL) {
 			xmlFreeDoc((xmlDoc *) document->ptr);
 		}
@@ -1364,9 +1387,6 @@ PHP_LIBXML_API int php_libxml_decrement_doc_ref_directly(php_libxml_ref_obj *doc
 				FREE_HASHTABLE(document->doc_props->classmap);
 			}
 			efree(document->doc_props);
-		}
-		if (document->private_data != NULL) {
-			document->private_data->dtor(document->private_data);
 		}
 		efree(document);
 	}

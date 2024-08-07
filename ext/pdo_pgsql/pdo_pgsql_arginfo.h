@@ -1,5 +1,5 @@
 /* This is a generated file, edit the .stub.php file instead.
- * Stub hash: 519530b2da60dbd7a70af6d7c566d93930cfbb24 */
+ * Stub hash: 225cbb077d441f93b7c6bdb9826ab3e8f634b79d */
 
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_Pdo_Pgsql_escapeIdentifier, 0, 1, IS_STRING, 0)
 	ZEND_ARG_TYPE_INFO(0, input, IS_STRING, 0)
@@ -50,6 +50,10 @@ ZEND_END_ARG_INFO()
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_Pdo_Pgsql_getPid, 0, 0, IS_LONG, 0)
 ZEND_END_ARG_INFO()
 
+ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_Pdo_Pgsql_setNoticeCallback, 0, 1, IS_VOID, 0)
+	ZEND_ARG_TYPE_INFO(0, callback, IS_CALLABLE, 1)
+ZEND_END_ARG_INFO()
+
 ZEND_METHOD(Pdo_Pgsql, escapeIdentifier);
 ZEND_METHOD(Pdo_Pgsql, copyFromArray);
 ZEND_METHOD(Pdo_Pgsql, copyFromFile);
@@ -60,6 +64,7 @@ ZEND_METHOD(Pdo_Pgsql, lobOpen);
 ZEND_METHOD(Pdo_Pgsql, lobUnlink);
 ZEND_METHOD(Pdo_Pgsql, getNotify);
 ZEND_METHOD(Pdo_Pgsql, getPid);
+ZEND_METHOD(Pdo_Pgsql, setNoticeCallback);
 
 static const zend_function_entry class_Pdo_Pgsql_methods[] = {
 	ZEND_ME(Pdo_Pgsql, escapeIdentifier, arginfo_class_Pdo_Pgsql_escapeIdentifier, ZEND_ACC_PUBLIC)
@@ -72,15 +77,16 @@ static const zend_function_entry class_Pdo_Pgsql_methods[] = {
 	ZEND_ME(Pdo_Pgsql, lobUnlink, arginfo_class_Pdo_Pgsql_lobUnlink, ZEND_ACC_PUBLIC)
 	ZEND_ME(Pdo_Pgsql, getNotify, arginfo_class_Pdo_Pgsql_getNotify, ZEND_ACC_PUBLIC)
 	ZEND_ME(Pdo_Pgsql, getPid, arginfo_class_Pdo_Pgsql_getPid, ZEND_ACC_PUBLIC)
+	ZEND_ME(Pdo_Pgsql, setNoticeCallback, arginfo_class_Pdo_Pgsql_setNoticeCallback, ZEND_ACC_PUBLIC)
 	ZEND_FE_END
 };
 
-static zend_class_entry *register_class_Pdo_Pgsql(zend_class_entry *class_entry_Pdo_PDO)
+static zend_class_entry *register_class_Pdo_Pgsql(zend_class_entry *class_entry_PDO)
 {
 	zend_class_entry ce, *class_entry;
 
 	INIT_NS_CLASS_ENTRY(ce, "Pdo", "Pgsql", class_Pdo_Pgsql_methods);
-	class_entry = zend_register_internal_class_ex(&ce, class_entry_Pdo_PDO);
+	class_entry = zend_register_internal_class_ex(&ce, class_entry_PDO);
 	class_entry->ce_flags |= ZEND_ACC_NO_DYNAMIC_PROPERTIES|ZEND_ACC_NOT_SERIALIZABLE;
 
 	zval const_ATTR_DISABLE_PREPARES_value;

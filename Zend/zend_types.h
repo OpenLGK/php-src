@@ -633,10 +633,11 @@ struct _zend_ast_ref {
 #define ZEND_GUARD_PROPERTY_SET		(1<<1)
 #define ZEND_GUARD_PROPERTY_UNSET	(1<<2)
 #define ZEND_GUARD_PROPERTY_ISSET	(1<<3)
-#define ZEND_GUARD_PROPERTY_MASK	15
-#define ZEND_GUARD_RECURSION_DEBUG	(1<<4)
-#define ZEND_GUARD_RECURSION_EXPORT	(1<<5)
-#define ZEND_GUARD_RECURSION_JSON	(1<<6)
+#define ZEND_GUARD_PROPERTY_HOOK	(1<<4)
+#define ZEND_GUARD_PROPERTY_MASK	31
+#define ZEND_GUARD_RECURSION_DEBUG	(1<<5)
+#define ZEND_GUARD_RECURSION_EXPORT	(1<<6)
+#define ZEND_GUARD_RECURSION_JSON	(1<<7)
 
 #define ZEND_GUARD_RECURSION_TYPE(t) ZEND_GUARD_RECURSION_ ## t
 
@@ -790,11 +791,6 @@ static zend_always_inline uint32_t zval_gc_info(uint32_t gc_type_info) {
 /* zval.u1.v.type_flags */
 #define IS_TYPE_REFCOUNTED			(1<<0)
 #define IS_TYPE_COLLECTABLE			(1<<1)
-/* Used for static variables to check if they have been initialized. We can't use IS_UNDEF because
- * we can't store IS_UNDEF zvals in the static_variables HashTable. This needs to live in type_info
- * so that the ZEND_ASSIGN overrides it but is moved to extra to avoid breaking the Z_REFCOUNTED()
- * optimization that only checks for Z_TYPE_FLAGS() without `& (IS_TYPE_COLLECTABLE|IS_TYPE_REFCOUNTED)`. */
-#define IS_STATIC_VAR_UNINITIALIZED		(1<<0)
 
 #if 1
 /* This optimized version assumes that we have a single "type_flag" */

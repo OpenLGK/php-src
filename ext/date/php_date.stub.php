@@ -83,18 +83,21 @@ const DATE_W3C = DATE_RFC3339;
 /**
  * @var int
  * @cvalue SUNFUNCS_RET_TIMESTAMP
+ * @deprecated
  */
 const SUNFUNCS_RET_TIMESTAMP = UNKNOWN;
 
 /**
  * @var int
  * @cvalue SUNFUNCS_RET_STRING
+ * @deprecated
  */
 const SUNFUNCS_RET_STRING = UNKNOWN;
 
 /**
  * @var int
  * @cvalue SUNFUNCS_RET_DOUBLE
+ * @deprecated
  */
 const SUNFUNCS_RET_DOUBLE = UNKNOWN;
 
@@ -120,14 +123,14 @@ function checkdate(int $month, int $day, int $year): bool {}
 
 /**
  * @refcount 1
- * @deprecated
  */
+#[\Deprecated(since: '8.1', message: 'use IntlDateFormatter::format() instead')]
 function strftime(string $format, ?int $timestamp = null): string|false {}
 
 /**
  * @refcount 1
- * @deprecated
  */
+#[\Deprecated(since: '8.1', message: 'use IntlDateFormatter::format() instead')]
 function gmstrftime(string $format, ?int $timestamp = null): string|false {}
 
 function time(): int {}
@@ -260,8 +263,8 @@ function date_default_timezone_get(): string {}
 
 /**
  * @refcount 1
- * @deprecated
  */
+#[\Deprecated(since: '8.1', message: 'use date_sun_info() instead')]
 function date_sunrise(
     int $timestamp, int $returnFormat = SUNFUNCS_RET_STRING,
     ?float $latitude = null, ?float $longitude = null, ?float $zenith = null,
@@ -269,8 +272,8 @@ function date_sunrise(
 
 /**
  * @refcount 1
- * @deprecated
  */
+#[\Deprecated(since: '8.1', message: 'use date_sun_info() instead')]
 function date_sunset(
     int $timestamp, int $returnFormat = SUNFUNCS_RET_STRING,
     ?float $latitude = null, ?float $longitude = null, ?float $zenith = null,
@@ -383,7 +386,7 @@ class DateTime implements DateTimeInterface
     /**
      * @tentative-return-type
      */
-    public function modify(string $modifier): DateTime|false {}
+    public function modify(string $modifier): DateTime {}
 
     /**
      * @tentative-return-type
@@ -521,7 +524,7 @@ class DateTimeImmutable implements DateTimeInterface
     public function diff(DateTimeInterface $targetObject, bool $absolute = false): DateInterval {}
 
     /** @tentative-return-type */
-    public function modify(string $modifier): DateTimeImmutable|false {}
+    public function modify(string $modifier): DateTimeImmutable {}
 
     /** @tentative-return-type */
     public function add(DateInterval $interval): DateTimeImmutable {}
@@ -644,7 +647,7 @@ class DateInterval
     /**
      * @tentative-return-type
      */
-    public static function createFromDateString(string $datetime): DateInterval|false {}
+    public static function createFromDateString(string $datetime): DateInterval {}
 
     /**
      * @tentative-return-type

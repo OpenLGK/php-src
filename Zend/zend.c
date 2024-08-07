@@ -94,6 +94,8 @@ ZEND_API char *(*zend_getenv)(const char *name, size_t name_len);
 ZEND_API zend_string *(*zend_resolve_path)(zend_string *filename);
 ZEND_API zend_result (*zend_post_startup_cb)(void) = NULL;
 ZEND_API void (*zend_post_shutdown_cb)(void) = NULL;
+ZEND_ATTRIBUTE_NONNULL ZEND_API zend_result (*zend_random_bytes)(void *bytes, size_t size, char *errstr, size_t errstr_size) = NULL;
+ZEND_ATTRIBUTE_NONNULL ZEND_API void (*zend_random_bytes_insecure)(zend_random_bytes_insecure_state *state, void *bytes, size_t size) = NULL;
 
 /* This callback must be signal handler safe! */
 void (*zend_on_timeout)(int seconds);
@@ -210,6 +212,12 @@ static ZEND_INI_MH(OnUpdateReservedStackSize) /* {{{ */
 	zend_ulong min = ZEND_ALLOCA_MAX_SIZE + 16*1024;
 #else
 	zend_ulong min = 32*1024;
+#endif
+
+#if defined(__SANITIZE_ADDRESS__) || __has_feature(memory_sanitizer)
+	/* AddressSanitizer and MemorySanitizer use more stack due to
+	 * instrumentation */
+	min *= 10;
 #endif
 
 	if (size == 0) {
@@ -912,6 +920,11 @@ void zend_startup(zend_utility_functions *utility_functions) /* {{{ */
 	php_win32_cp_set_by_id(65001);
 #endif
 
+	/* Set up early utility functions. zend_mm depends on
+	 * zend_random_bytes_insecure */
+	zend_random_bytes = utility_functions->random_bytes_function;
+	zend_random_bytes_insecure = utility_functions->random_bytes_insecure_function;
+
 	start_memory_manager();
 
 	virtual_cwd_startup(); /* Could use shutdown to free the main cwd but it would just slow it down for CGI */
@@ -1121,6 +1134,7 @@ zend_result zend_post_startup(void) /* {{{ */
 #ifdef ZEND_CHECK_STACK_LIMIT
 	zend_call_stack_init();
 #endif
+	gc_init();
 
 	return SUCCESS;
 }

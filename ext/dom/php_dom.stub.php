@@ -147,6 +147,7 @@ namespace
 
     /**
      * @var int
+     * @deprecated is no longer used since 8.4
      * @cvalue PHP_ERR
      */
     const DOM_PHP_ERR = UNKNOWN;
@@ -408,7 +409,7 @@ namespace
         public function compareDocumentPosition(DOMNode $other): int {}
 
         public function __sleep(): array {}
-    
+
         public function __wakeup(): void {}
     }
 
@@ -446,16 +447,13 @@ namespace
 
         /** @implementation-alias DOMNode::__sleep */
         public function __sleep(): array {}
-    
+
         /** @implementation-alias DOMNode::__wakeup */
         public function __wakeup(): void {}
     }
 
     class DOMImplementation
     {
-        /** @tentative-return-type */
-        public function getFeature(string $feature, string $version): never {}
-
         /** @tentative-return-type */
         public function hasFeature(string $feature, string $version): bool {}
 
@@ -1106,6 +1104,9 @@ namespace Dom
         public function append(Node|string ...$nodes): void;
         public function prepend(Node|string ...$nodes): void;
         public function replaceChildren(Node|string ...$nodes): void;
+
+        public function querySelector(string $selectors): ?Element;
+        public function querySelectorAll(string $selectors): NodeList;
     }
 
     interface ChildNode
@@ -1280,6 +1281,14 @@ namespace Dom
         public function getIterator(): \Iterator {}
     }
 
+    enum AdjacentPosition : string
+    {
+        case BeforeBegin = "beforebegin";
+        case AfterBegin = "afterbegin";
+        case BeforeEnd = "beforeend";
+        case AfterEnd = "afterend";
+    }
+
     class Element extends Node implements ParentNode, ChildNode
     {
         /** @readonly */
@@ -1293,6 +1302,8 @@ namespace Dom
 
         public string $id;
         public string $className;
+        /** @readonly */
+        public TokenList $classList;
 
         /** @implementation-alias DOMNode::hasAttributes */
         public function hasAttributes(): bool {}
@@ -1330,9 +1341,8 @@ namespace Dom
         public function getElementsByTagName(string $qualifiedName): HTMLCollection {}
         public function getElementsByTagNameNS(?string $namespace, string $localName): HTMLCollection {}
 
-        public function insertAdjacentElement(string $where, Element $element): ?Element {}
-        /** @implementation-alias DOMElement::insertAdjacentText */
-        public function insertAdjacentText(string $where, string $data): void {}
+        public function insertAdjacentElement(AdjacentPosition $where, Element $element): ?Element {}
+        public function insertAdjacentText(AdjacentPosition $where, string $data): void {}
 
         /** @readonly */
         public ?Element $firstElementChild;
@@ -1365,6 +1375,27 @@ namespace Dom
         public function prepend(Node|string ...$nodes): void {}
         /** @implementation-alias DOMElement::replaceChildren */
         public function replaceChildren(Node|string ...$nodes): void {}
+
+        public function querySelector(string $selectors): ?Element {}
+        public function querySelectorAll(string $selectors): NodeList {}
+        public function closest(string $selectors): ?Element {}
+        public function matches(string $selectors): bool {}
+
+        public string $innerHTML;
+
+        public string $substitutedNodeValue;
+
+        /** @return list<NamespaceInfo> */
+        public function getInScopeNamespaces(): array {}
+
+        /** @return list<NamespaceInfo> */
+        public function getDescendantNamespaces(): array {}
+
+        public function rename(?string $namespaceURI, string $qualifiedName): void {}
+    }
+
+    class HTMLElement extends Element
+    {
     }
 
     class Attr extends Node
@@ -1387,6 +1418,9 @@ namespace Dom
 
         /** @implementation-alias DOMAttr::isId */
         public function isId(): bool {}
+
+        /** @implementation-alias Dom\Element::rename */
+        public function rename(?string $namespaceURI, string $qualifiedName): void {}
     }
 
     class CharacterData extends Node implements ChildNode
@@ -1481,6 +1515,11 @@ namespace Dom
         public function prepend(Node|string ...$nodes): void {}
         /** @implementation-alias DOMElement::replaceChildren */
         public function replaceChildren(Node|string ...$nodes): void {}
+
+        /** @implementation-alias Dom\Element::querySelector */
+        public function querySelector(string $selectors): ?Element {}
+        /** @implementation-alias Dom\Element::querySelectorAll */
+        public function querySelectorAll(string $selectors): NodeList {}
     }
 
     class Entity extends Node
@@ -1573,6 +1612,16 @@ namespace Dom
         public function replaceChildren(Node|string ...$nodes): void {}
 
         public function importLegacyNode(\DOMNode $node, bool $deep = false): Node {}
+
+        /** @implementation-alias Dom\Element::querySelector */
+        public function querySelector(string $selectors): ?Element {}
+        /** @implementation-alias Dom\Element::querySelectorAll */
+        public function querySelectorAll(string $selectors): NodeList {}
+
+        public ?HTMLElement $body;
+        /** @readonly */
+        public ?HTMLElement $head;
+        public string $title;
     }
 
     final class HTMLDocument extends Document
@@ -1592,6 +1641,10 @@ namespace Dom
         public function saveHtml(?Node $node = null): string {}
 
         public function saveHtmlFile(string $filename): int|false {}
+
+#if ZEND_DEBUG
+        public function debugGetTemplateCount(): int {}
+#endif
     }
 
     final class XMLDocument extends Document
@@ -1617,13 +1670,51 @@ namespace Dom
         /** @implementation-alias DOMDocument::validate */
         public function validate(): bool {}
 
-        /** @implementation-alias DOMDocument::xinclude */
-        public function xinclude(int $options = 0): int|false {}
+        public function xinclude(int $options = 0): int {}
 
         public function saveXml(?Node $node = null, int $options = 0): string|false {}
 
         /** @implementation-alias DOMDocument::save */
         public function saveXmlFile(string $filename, int $options = 0): int|false {}
+    }
+
+    /**
+     * @not-serializable
+     * @strict-properties
+     */
+    final class TokenList implements IteratorAggregate, Countable
+    {
+        /** @implementation-alias Dom\Node::__construct */
+        private function __construct() {}
+
+        /** @readonly */
+        public int $length;
+        public function item(int $index): ?string {}
+        public function contains(string $token): bool {}
+        public function add(string ...$tokens): void {}
+        public function remove(string ...$tokens): void {}
+        public function toggle(string $token, ?bool $force = null): bool {}
+        public function replace(string $token, string $newToken): bool {}
+        public function supports(string $token): bool {}
+        public string $value;
+
+        public function count(): int {}
+
+        public function getIterator(): \Iterator {}
+    }
+
+    /**
+     * @not-serializable
+     * @strict-properties
+     */
+    readonly final class NamespaceInfo
+    {
+        public ?string $prefix;
+        public ?string $namespaceURI;
+        public Element $element;
+
+        /** @implementation-alias Dom\Node::__construct */
+        private function __construct() {}
     }
 
 #ifdef LIBXML_XPATH_ENABLED

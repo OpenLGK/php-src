@@ -16,7 +16,7 @@
 */
 
 #ifdef HAVE_CONFIG_H
-#include "config.h"
+#include <config.h>
 #endif
 
 #include "php.h"
@@ -295,7 +295,6 @@ static xmlDocPtr php_xsl_apply_stylesheet(zval *id, xsl_object *intern, xsltStyl
 	zend_string *member;
 	FILE *f;
 	int secPrefsError = 0;
-	int secPrefsValue;
 	xsltSecurityPrefsPtr secPrefs = NULL;
 
 	node = php_libxml_import_node(docp);
@@ -318,10 +317,10 @@ static xmlDocPtr php_xsl_apply_stylesheet(zval *id, xsl_object *intern, xsltStyl
 	}
 
 	if (intern->profiling) {
-		if (php_check_open_basedir(intern->profiling)) {
+		if (php_check_open_basedir(ZSTR_VAL(intern->profiling))) {
 			f = NULL;
 		} else {
-			f = VCWD_FOPEN(intern->profiling, "w");
+			f = VCWD_FOPEN(ZSTR_VAL(intern->profiling), "w");
 		}
 	} else {
 		f = NULL;
@@ -362,7 +361,7 @@ static xmlDocPtr php_xsl_apply_stylesheet(zval *id, xsl_object *intern, xsltStyl
 	ZEND_ASSERT(Z_TYPE_P(max_template_vars) == IS_LONG);
 	ctxt->maxTemplateVars = Z_LVAL_P(max_template_vars);
 
-	secPrefsValue = intern->securityPrefs;
+	zend_long secPrefsValue = intern->securityPrefs;
 
 	/* if securityPrefs is set to NONE, we don't have to do any checks, but otherwise... */
 	if (secPrefsValue != XSL_SECPREF_NONE) {
@@ -708,11 +707,12 @@ PHP_METHOD(XSLTProcessor, registerPHPFunctionNS)
 	ZEND_PARSE_PARAMETERS_END();
 
 	if (zend_string_equals_literal(namespace, "http://php.net/xsl")) {
+		zend_release_fcall_info_cache(&fcc);
 		zend_argument_value_error(1, "must not be \"http://php.net/xsl\" because it is reserved by PHP");
 		RETURN_THROWS();
 	}
 
-	php_dom_xpath_callbacks_update_single_method_handler(
+	if (php_dom_xpath_callbacks_update_single_method_handler(
 		&intern->xpath_callbacks,
 		NULL,
 		namespace,
@@ -720,7 +720,9 @@ PHP_METHOD(XSLTProcessor, registerPHPFunctionNS)
 		&fcc,
 		PHP_DOM_XPATH_CALLBACK_NAME_VALIDATE_NCNAME,
 		NULL
-	);
+	) != SUCCESS) {
+		zend_release_fcall_info_cache(&fcc);
+	}
 }
 
 /* {{{ */
@@ -728,19 +730,18 @@ PHP_METHOD(XSLTProcessor, setProfiling)
 {
 	zval *id = ZEND_THIS;
 	xsl_object *intern;
-	char *filename = NULL;
-	size_t filename_len;
+	zend_string *filename = NULL;
 
-	if (zend_parse_parameters(ZEND_NUM_ARGS(), "p!", &filename, &filename_len) == FAILURE) {
+	if (zend_parse_parameters(ZEND_NUM_ARGS(), "P!", &filename) == FAILURE) {
 		RETURN_THROWS();
 	}
 
 	intern = Z_XSL_P(id);
 	if (intern->profiling) {
-		efree(intern->profiling);
+		zend_string_release(intern->profiling);
 	}
 	if (filename != NULL) {
-		intern->profiling = estrndup(filename, filename_len);
+		intern->profiling = zend_string_copy(filename);
 	} else {
 		intern->profiling = NULL;
 	}

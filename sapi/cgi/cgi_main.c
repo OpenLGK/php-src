@@ -36,11 +36,11 @@
 # include <process.h>
 #endif
 
-#if HAVE_SYS_TIME_H
+#ifdef HAVE_SYS_TIME_H
 # include <sys/time.h>
 #endif
 
-#if HAVE_UNISTD_H
+#ifdef HAVE_UNISTD_H
 # include <unistd.h>
 #endif
 
@@ -48,11 +48,11 @@
 
 #include <locale.h>
 
-#if HAVE_SYS_TYPES_H
+#ifdef HAVE_SYS_TYPES_H
 # include <sys/types.h>
 #endif
 
-#if HAVE_SYS_WAIT_H
+#ifdef HAVE_SYS_WAIT_H
 # include <sys/wait.h>
 #endif
 
@@ -87,12 +87,15 @@ int __riscosify_control = __RISCOSIFY_STRICT_UNIX_SPECS;
 #include "fastcgi.h"
 #include "cgi_main_arginfo.h"
 
-#if defined(PHP_WIN32) && defined(HAVE_OPENSSL)
+#if defined(PHP_WIN32) && defined(HAVE_OPENSSL_EXT)
 # include "openssl/applink.c"
 #endif
 
 #ifdef HAVE_VALGRIND
 # include "valgrind/callgrind.h"
+# ifdef HAVE_VALGRIND_CACHEGRIND_H
+#  include "valgrind/cachegrind.h"
+# endif
 #endif
 
 #ifndef PHP_WIN32
@@ -595,23 +598,23 @@ static char *sapi_fcgi_getenv(const char *name, size_t name_len)
 
 static char *_sapi_cgi_putenv(char *name, size_t name_len, char *value)
 {
-#if !HAVE_SETENV || !HAVE_UNSETENV
+#if !defined(HAVE_SETENV) || !defined(HAVE_UNSETENV)
 	size_t len;
 	char *buf;
 #endif
 
-#if HAVE_SETENV
+#ifdef HAVE_SETENV
 	if (value) {
 		setenv(name, value, 1);
 	}
 #endif
-#if HAVE_UNSETENV
+#ifdef HAVE_UNSETENV
 	if (!value) {
 		unsetenv(name);
 	}
 #endif
 
-#if !HAVE_SETENV || !HAVE_UNSETENV
+#if !defined(HAVE_SETENV) || !defined(HAVE_UNSETENV)
 	/*  if cgi, or fastcgi and not found in fcgi env
 		check the regular environment
 		this leaks, but it's only cgi anyway, we'll fix
@@ -623,13 +626,13 @@ static char *_sapi_cgi_putenv(char *name, size_t name_len, char *value)
 		return getenv(name);
 	}
 #endif
-#if !HAVE_SETENV
+#if !defined(HAVE_SETENV)
 	if (value) {
 		len = slprintf(buf, len - 1, "%s=%s", name, value);
 		putenv(buf);
 	}
 #endif
-#if !HAVE_UNSETENV
+#if !defined(HAVE_UNSETENV)
 	if (!value) {
 		len = slprintf(buf, len - 1, "%s=", name);
 		putenv(buf);
@@ -1737,7 +1740,7 @@ int main(int argc, char *argv[])
 	int warmup_repeats = 0;
 	int repeats = 1;
 	int benchmark = 0;
-#if HAVE_GETTIMEOFDAY
+#ifdef HAVE_GETTIMEOFDAY
 	struct timeval start, end;
 #else
 	time_t start, end;
@@ -1913,14 +1916,14 @@ int main(int argc, char *argv[])
 <p>This PHP CGI binary was compiled with force-cgi-redirect enabled.  This\n\
 means that a page will only be served up if the REDIRECT_STATUS CGI variable is\n\
 set, e.g. via an Apache Action directive.</p>\n\
-<p>For more information as to <i>why</i> this behaviour exists, see the <a href=\"http://php.net/security.cgi-bin\">\
+<p>For more information as to <i>why</i> this behaviour exists, see the <a href=\"https://www.php.net/security.cgi-bin\">\
 manual page for CGI security</a>.</p>\n\
 <p>For more information about changing this behaviour or re-enabling this webserver,\n\
 consult the installation file that came with this distribution, or visit \n\
-<a href=\"http://php.net/install.windows\">the manual page</a>.</p>\n");
+<a href=\"https://www.php.net/install.windows\">the manual page</a>.</p>\n");
 			} zend_catch {
 			} zend_end_try();
-#if defined(ZTS) && !defined(PHP_DEBUG)
+#if defined(ZTS) && !PHP_DEBUG
 			/* XXX we're crashing here in msvc6 debug builds at
 			 * php_message_handler_for_zend:839 because
 			 * SG(request_info).path_translated is an invalid pointer.
@@ -2231,7 +2234,7 @@ parent_loop_end:
 		} else {
 			parent = 0;
 		}
-#endif /* WIN32 */
+#endif /* PHP_WIN32 */
 	}
 
 	zend_first_try {
@@ -2249,6 +2252,10 @@ parent_loop_end:
 								CALLGRIND_STOP_INSTRUMENTATION;
 								/* We're not interested in measuring startup */
 								CALLGRIND_ZERO_STATS;
+# ifdef HAVE_VALGRIND_CACHEGRIND_H
+								CACHEGRIND_STOP_INSTRUMENTATION;
+								/* Zeroing stats is not supported for cachegrind. */
+# endif
 							}
 #endif
 						} else {
@@ -2461,6 +2468,9 @@ do_repeat:
 #ifdef HAVE_VALGRIND
 			if (warmup_repeats == 0) {
 				CALLGRIND_START_INSTRUMENTATION;
+# ifdef HAVE_VALGRIND_CACHEGRIND_H
+				CACHEGRIND_START_INSTRUMENTATION;
+# endif
 			}
 #endif
 
@@ -2585,6 +2595,9 @@ fastcgi_request_done:
 #ifdef HAVE_VALGRIND
 			/* We're not interested in measuring shutdown */
 			CALLGRIND_STOP_INSTRUMENTATION;
+# ifdef HAVE_VALGRIND_CACHEGRIND_H
+			CACHEGRIND_STOP_INSTRUMENTATION;
+# endif
 #endif
 
 			if (!fastcgi) {
