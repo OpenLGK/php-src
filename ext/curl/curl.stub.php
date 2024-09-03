@@ -84,7 +84,8 @@ const CURLOPT_DNS_USE_GLOBAL_CACHE = UNKNOWN;
 const CURLOPT_EGDSOCKET = UNKNOWN;
 /**
  * @var int
- * @cvalue CURLOPT_ENCODING
+ * @cvalue CURLOPT_ACCEPT_ENCODING
+ * @alias CURLOPT_ACCEPT_ENCODING
  */
 const CURLOPT_ENCODING = UNKNOWN;
 /**
@@ -407,6 +408,13 @@ const CURLOPT_SSL_VERIFYPEER = UNKNOWN;
  * @cvalue CURLOPT_STDERR
  */
 const CURLOPT_STDERR = UNKNOWN;
+#if LIBCURL_VERSION_NUM >= 0x080900 /* Available since 8.9.0 */
+/**
+ * @var int
+ * @cvalue CURLOPT_TCP_KEEPCNT
+ */
+const CURLOPT_TCP_KEEPCNT = UNKNOWN;
+#endif
 /**
  * @var int
  * @cvalue CURLOPT_TELNETOPTIONS
@@ -1284,9 +1292,15 @@ const CURLINFO_RESPONSE_CODE = UNKNOWN;
 const CURLINFO_PROXYAUTH_AVAIL = UNKNOWN;
 /**
  * @var int
- * @cvalue CURLOPT_FTP_RESPONSE_TIMEOUT
+ * @cvalue CURLOPT_SERVER_RESPONSE_TIMEOUT
+ * @alias CURLOPT_SERVER_RESPONSE_TIMEOUT
  */
 const CURLOPT_FTP_RESPONSE_TIMEOUT = UNKNOWN;
+/**
+ * @var int
+ * @cvalue CURLOPT_SERVER_RESPONSE_TIMEOUT
+ */
+const CURLOPT_SERVER_RESPONSE_TIMEOUT = UNKNOWN;
 /**
  * @var int
  * @cvalue CURLOPT_IPRESOLVE
@@ -3102,6 +3116,11 @@ const CURL_VERSION_HTTP3 = UNKNOWN;
  * @cvalue CURLINFO_RETRY_AFTER
  */
 const CURLINFO_RETRY_AFTER = UNKNOWN;
+/**
+ * @var int
+ * @cvalue CURL_HTTP_VERSION_3
+ */
+const CURL_HTTP_VERSION_3  = UNKNOWN;
 #endif
 
 #if LIBCURL_VERSION_NUM >= 0x074300 /* Available since 7.67.0 */
@@ -3485,6 +3504,21 @@ const CURLOPT_MAXLIFETIME_CONN = UNKNOWN;
  * @cvalue CURLOPT_SSH_HOST_PUBLIC_KEY_SHA256
  */
 const CURLOPT_SSH_HOST_PUBLIC_KEY_SHA256 = UNKNOWN;
+/**
+ * @var int
+ * @cvalue CURLOPT_PREREQFUNCTION
+ */
+const CURLOPT_PREREQFUNCTION = UNKNOWN;
+/**
+ * @var int
+ * @cvalue CURL_PREREQFUNC_OK
+ */
+const CURL_PREREQFUNC_OK = UNKNOWN;
+/**
+ * @var int
+ * @cvalue CURL_PREREQFUNC_ABORT
+ */
+const CURL_PREREQFUNC_ABORT = UNKNOWN;
 #endif
 
 #if LIBCURL_VERSION_NUM >= 0x075100 /* Available since 7.81.0 */
@@ -3545,6 +3579,14 @@ const CURLOPT_CA_CACHE_TIMEOUT = UNKNOWN;
  * @cvalue CURLOPT_QUICK_EXIT
  */
 const CURLOPT_QUICK_EXIT = UNKNOWN;
+#endif
+
+#if LIBCURL_VERSION_NUM >= 0x075800 /* Available since 7.88.0 */
+/**
+ * @var int
+ * @cvalue CURL_HTTP_VERSION_3ONLY
+ */
+const CURL_HTTP_VERSION_3ONLY  = UNKNOWN;
 #endif
 
 /**

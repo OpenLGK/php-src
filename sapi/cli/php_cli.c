@@ -625,28 +625,7 @@ static int do_cli(int argc, char **argv) /* {{{ */
 				goto out;
 
 			case 'v': /* show php version & quit */
-				php_printf("PHP %s (%s) (built: %s %s) (%s)\nCopyright (c) The PHP Group\n%s",
-					PHP_VERSION, cli_sapi_module.name, __DATE__, __TIME__,
-#ifdef ZTS
-					"ZTS"
-#else
-					"NTS"
-#endif
-#ifdef PHP_BUILD_COMPILER
-					" " PHP_BUILD_COMPILER
-#endif
-#ifdef PHP_BUILD_ARCH
-					" " PHP_BUILD_ARCH
-#endif
-#if ZEND_DEBUG
-					" DEBUG"
-#endif
-#ifdef HAVE_GCOV
-					" GCOV"
-#endif
-					,
-					get_zend_version()
-				);
+				php_print_version(&cli_sapi_module);
 				sapi_deactivate();
 				goto out;
 
@@ -851,7 +830,7 @@ static int do_cli(int argc, char **argv) /* {{{ */
 			goto err;
 		}
 
-#if defined(PHP_WIN32) && !defined(PHP_CLI_WIN32_NO_CONSOLE) && (defined(HAVE_LIBREADLINE) || defined(HAVE_LIBEDIT)) && !defined(COMPILE_DL_READLINE)
+#if defined(PHP_WIN32) && !defined(PHP_CLI_WIN32_NO_CONSOLE) && defined(HAVE_LIBEDIT) && !defined(COMPILE_DL_READLINE)
 		if (!interactive) {
 		/* The -a option was not passed. If there is no file, it could
 		 	still make sense to run interactively. The presence of a file

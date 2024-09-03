@@ -23,7 +23,7 @@
 #include "ext/standard/php_filestat.h"
 #include "ext/standard/flock_compat.h"
 #include "ext/standard/scanf.h"
-#include "ext/standard/php_string.h"
+#include "ext/standard/php_string.h" /* For php_basename() */
 #include "zend_attributes.h"
 #include "zend_exceptions.h"
 #include "zend_interfaces.h"
@@ -696,7 +696,7 @@ static void spl_filesystem_object_construct(INTERNAL_FUNCTION_PARAMETERS, zend_l
 	}
 
 	if (ZSTR_LEN(path) == 0) {
-		zend_argument_value_error(1, "cannot be empty");
+		zend_argument_must_not_be_empty_error(1);
 		RETURN_THROWS();
 	}
 
@@ -1227,7 +1227,7 @@ PHP_METHOD(SplFileInfo, getLinkTarget)
 	}
 #if defined(PHP_WIN32) || defined(HAVE_SYMLINK)
 	if (intern->file_name == NULL) {
-		zend_value_error("Filename cannot be empty");
+		zend_value_error("Filename must not be empty");
 		RETURN_THROWS();
 	}
 	if (!IS_ABSOLUTE_PATH(ZSTR_VAL(intern->file_name), ZSTR_LEN(intern->file_name))) {
@@ -1362,7 +1362,7 @@ PHP_METHOD(SplFileInfo, getPathInfo)
 	path = spl_filesystem_object_get_pathname(intern);
 	if (path && ZSTR_LEN(path)) {
 		zend_string *dpath = zend_string_init(ZSTR_VAL(path), ZSTR_LEN(path), 0);
-		ZSTR_LEN(dpath) = php_dirname(ZSTR_VAL(dpath), ZSTR_LEN(path));
+		ZSTR_LEN(dpath) = zend_dirname(ZSTR_VAL(dpath), ZSTR_LEN(path));
 		spl_filesystem_object_create_info(dpath, ce, return_value);
 		zend_string_release(dpath);
 	}
@@ -2310,6 +2310,10 @@ PHP_METHOD(SplFileObject, fgetcsv)
 		if (esc_len == 0) {
 			escape = PHP_CSV_NO_ESCAPE;
 		} else {
+			php_error_docref(NULL, E_DEPRECATED, "Passing a non-empty string to the $escape parameter is deprecated since 8.4");
+			if (UNEXPECTED(EG(exception))) {
+				RETURN_THROWS();
+			}
 			escape = (unsigned char) esc[0];
 		}
 	}
@@ -2358,6 +2362,10 @@ PHP_METHOD(SplFileObject, fputcsv)
 		if (esc_len == 0) {
 			escape = PHP_CSV_NO_ESCAPE;
 		} else {
+			php_error_docref(NULL, E_DEPRECATED, "Passing a non-empty string to the $escape parameter is deprecated since 8.4");
+			if (UNEXPECTED(EG(exception))) {
+				RETURN_THROWS();
+			}
 			escape = (unsigned char) esc[0];
 		}
 	}
@@ -2405,6 +2413,10 @@ PHP_METHOD(SplFileObject, setCsvControl)
 		if (esc_len == 0) {
 			escape = PHP_CSV_NO_ESCAPE;
 		} else {
+			php_error_docref(NULL, E_DEPRECATED, "Passing a non-empty string to the $escape parameter is deprecated since 8.4");
+			if (UNEXPECTED(EG(exception))) {
+				RETURN_THROWS();
+			}
 			escape = (unsigned char) esc[0];
 		}
 	}

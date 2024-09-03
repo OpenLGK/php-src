@@ -1499,35 +1499,31 @@ PHP_FUNCTION(copy)
 
 	context = php_stream_context_from_zval(zcontext, 0);
 
-	if (php_copy_file_ctx(source, target, 0, context) == SUCCESS) {
-		RETURN_TRUE;
-	} else {
-		RETURN_FALSE;
-	}
+	RETURN_BOOL(php_copy_file_ctx(source, target, 0, context) == SUCCESS);
 }
 /* }}} */
 
 /* {{{ php_copy_file */
-PHPAPI int php_copy_file(const char *src, const char *dest)
+PHPAPI zend_result php_copy_file(const char *src, const char *dest)
 {
 	return php_copy_file_ctx(src, dest, 0, NULL);
 }
 /* }}} */
 
 /* {{{ php_copy_file_ex */
-PHPAPI int php_copy_file_ex(const char *src, const char *dest, int src_flg)
+PHPAPI zend_result php_copy_file_ex(const char *src, const char *dest, int src_flags)
 {
-	return php_copy_file_ctx(src, dest, src_flg, NULL);
+	return php_copy_file_ctx(src, dest, src_flags, NULL);
 }
 /* }}} */
 
 /* {{{ php_copy_file_ctx */
-PHPAPI int php_copy_file_ctx(const char *src, const char *dest, int src_flg, php_stream_context *ctx)
+PHPAPI zend_result php_copy_file_ctx(const char *src, const char *dest, int src_flags, php_stream_context *ctx)
 {
 	php_stream *srcstream = NULL, *deststream = NULL;
-	int ret = FAILURE;
+	zend_result ret = FAILURE;
 	php_stream_statbuf src_s, dest_s;
-	int src_stat_flags = (src_flg & STREAM_DISABLE_OPEN_BASEDIR) ? PHP_STREAM_URL_STAT_IGNORE_OPEN_BASEDIR : 0;
+	int src_stat_flags = (src_flags & STREAM_DISABLE_OPEN_BASEDIR) ? PHP_STREAM_URL_STAT_IGNORE_OPEN_BASEDIR : 0;
 
 	switch (php_stream_stat_path_ex(src, src_stat_flags, &src_s, ctx)) {
 		case -1:
@@ -1594,7 +1590,7 @@ no_stat:
 	}
 safe_to_copy:
 
-	srcstream = php_stream_open_wrapper_ex(src, "rb", src_flg | REPORT_ERRORS, NULL, ctx);
+	srcstream = php_stream_open_wrapper_ex(src, "rb", src_flags | REPORT_ERRORS, NULL, ctx);
 
 	if (!srcstream) {
 		return ret;
@@ -1734,6 +1730,10 @@ PHP_FUNCTION(fputcsv)
 		if (escape_str_len < 1) {
 			escape_char = PHP_CSV_NO_ESCAPE;
 		} else {
+			php_error_docref(NULL, E_DEPRECATED, "Passing a non-empty string to the $escape parameter is deprecated since 8.4");
+			if (UNEXPECTED(EG(exception))) {
+				RETURN_THROWS();
+			}
 			/* use first character from string */
 			escape_char = (unsigned char) *escape_str;
 		}
@@ -1875,14 +1875,18 @@ PHP_FUNCTION(fgetcsv)
 			if (escape_str_len < 1) {
 				escape = PHP_CSV_NO_ESCAPE;
 			} else {
+				php_error_docref(NULL, E_DEPRECATED, "Passing a non-empty string to the $escape parameter is deprecated since 8.4");
+				if (UNEXPECTED(EG(exception))) {
+					RETURN_THROWS();
+				}
 				escape = (unsigned char) escape_str[0];
 			}
 		}
 
 		if (len_is_null || len == 0) {
 			len = -1;
-		} else if (len < 0) {
-			zend_argument_value_error(2, "must be a greater than or equal to 0");
+		} else if (len < 0 || len > (ZEND_LONG_MAX - 1)) {
+			zend_argument_value_error(2, "must be between 0 and " ZEND_LONG_FMT, (ZEND_LONG_MAX - 1));
 			RETURN_THROWS();
 		}
 

@@ -723,6 +723,8 @@ gdImagePtr gdImageRotate180(gdImagePtr src, int ignoretransparent);
 gdImagePtr gdImageRotate270(gdImagePtr src, int ignoretransparent);
 gdImagePtr gdImageRotateInterpolated(const gdImagePtr src, const float angle, int bgcolor);
 
+gdImagePtr gdImageClone(gdImagePtr src);
+
 void gdImageSetBrush(gdImagePtr im, gdImagePtr brush);
 void gdImageSetTile(gdImagePtr im, gdImagePtr tile);
 void gdImageSetAntiAliased(gdImagePtr im, int c);
@@ -878,6 +880,7 @@ gdImagePtr gdImageCropAuto(gdImagePtr im, const unsigned int mode);
 gdImagePtr gdImageCropThreshold(gdImagePtr im, const unsigned int color, const float threshold);
 
 int gdImageSetInterpolationMethod(gdImagePtr im, gdInterpolationMethod id);
+gdInterpolationMethod gdImageGetInterpolationMethod(gdImagePtr im);
 
 gdImagePtr gdImageScaleBilinear(gdImagePtr im, const unsigned int new_width, const unsigned int new_height);
 gdImagePtr gdImageScaleBicubic(gdImagePtr src_img, const unsigned int new_width, const unsigned int new_height);

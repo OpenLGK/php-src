@@ -99,8 +99,14 @@ PHP 8.4 INTERNALS UPGRADE NOTES
   zend_std_get_properties(). Use zend_std_get_properties_ex() or
   zend_std_get_properties() instead.
 
+* zend_object.properties must not be accessed directly. Use
+  zend_std_get_properties_ex() instead.
+
 * Removed IS_STATIC_VAR_UNINITIALIZED constant. Check for IS_NULL in the
   static_variables array instead.
+
+* Removed ZEND_DIM_ALTERNATIVE_SYNTAX constant. This syntax no longer has a
+  specialized error message.
 
 ========================
 2. Build system changes
@@ -129,6 +135,8 @@ PHP 8.4 INTERNALS UPGRADE NOTES
      --with-ftp-ssl and --with-mysqlnd-ssl.
    - New configure option --with-openssl-legacy-provider to enable OpenSSL
      legacy provider.
+   - New configure option --with-openssl-argon2 to enable PASSWORD_ARGON2
+     from OpenSSL 3.2
    - COOKIE_IO_FUNCTIONS_T symbol has been removed (use cookie_io_functions_t).
    - HAVE_SOCKADDR_UN_SUN_LEN symbol renamed to HAVE_STRUCT_SOCKADDR_UN_SUN_LEN.
    - HAVE_UTSNAME_DOMAINNAME symbol renamed to HAVE_STRUCT_UTSNAME_DOMAINNAME.
@@ -175,9 +183,19 @@ PHP 8.4 INTERNALS UPGRADE NOTES
    - M4 macro PHP_EVAL_LIBLINE got a new 3rd argument to override the ext_shared
      checks.
    - M4 macro PHP_SETUP_LIBXML doesn't define the redundant HAVE_LIBXML symbol
-     anymore.
+     anymore and requires at least libxml2 2.9.4.
    - M4 macro PHP_SETUP_ICONV doesn't define the HAVE_ICONV symbol anymore.
    - M4 macro PHP_OUTPUT is obsolete (use AC_CONFIG_FILES).
+   - M4 macro PHP_PROG_SETUP now accepts an argument to set the minimum required
+     PHP version during the build.
+   - M4 macro PHP_INSTALL_HEADERS arguments can now be also
+     blank-or-newline-separated lists instead of only separated with whitespace
+     or backslash-then-newline.
+   - M4 macro PHP_ADD_BUILD_DIR now also accepts 1st argument as a
+     blank-or-newline-separated separated list.
+   - M4 macros PHP_NEW_EXTENSION, PHP_ADD_SOURCES, PHP_ADD_SOURCES_X,
+     PHP_SELECT_SAPI now have the source files and flags arguments normalized so
+     the list of items can be passed as a blank-or-newline-separated list.
    - TSRM/tsrm.m4 file and its TSRM_CHECK_PTHREADS M4 macro have been removed.
    - Added pkg-config support to find libpq for the pdo_pgsql and pgsql
      extensions. The libpq paths can be customized with the PGSQL_CFLAGS and
@@ -189,6 +207,8 @@ PHP 8.4 INTERNALS UPGRADE NOTES
    - Added pkg-config support to find GNU MP library. As a fallback default
      system paths are searched. When a directory argument is provided
      (--with-gmp=DIR), it will be used instead of the pkg-config.
+   - Added optional pkg-config support to find NET-SNMP library. As a fallback
+     net-snmp-config utility is used like before.
    - Removed BC enable_pear variable check due to --enable-pear configure option
      once used (use with_pear variable name).
    - Cache variables synced to php_cv_* naming scheme. If you use them for
@@ -225,6 +245,9 @@ PHP 8.4 INTERNALS UPGRADE NOTES
    - Added configure option --enable-phpdbg-debug to build phpdbg in debug mode.
    - The win32/build/libs_version.txt file has been removed.
    - MSVC builds now use the new preprocessor (/Zc:preprocessor).
+   - The CHECK_HEADER_ADD_INCLUDE function now consistently defines preprocessor
+     macros HAVE_<header>_H either to value 1 or leaves them undefined to match
+     the Autotools headers checks.
 
 ========================
 3. Module changes
@@ -331,6 +354,11 @@ PHP 8.4 INTERNALS UPGRADE NOTES
    - The php_escape_shell_arg() now takes a zend_string* instead of a char*
      Moreover, providing it with a binary safe string is the responsibility of
      the caller now.
+   - The php_info_html_esc() function has been removed, use
+     php_escape_html_entities() with ENT_QUOTES directly instead.
+   - The deprecated php_uint32 and php_int32 typedefs have been removed from
+     ext/standard/basic_functions.h. Use the standard uint32_t and int32_t
+     types instead.
 
  h. ext/session
    - Added the php_get_session_status() API to get the session status, which is
@@ -354,6 +382,13 @@ PHP 8.4 INTERNALS UPGRADE NOTES
   operands. They only work for functions that are known at compile-time, and
   that provide a frameless handler (search for usages of the
   ZEND_FRAMELESS_FUNCTION macro).
+
+* CREATE_GENERATOR now initializes the generator with opline pointing to the
+  CREATE_GENERATOR op (before, opline was set to the next op).
+
+* YIELD and YIELD_FROM do not increment the opline anymore.
+
+* The EXIT opcode has been removed as exit is now implemented as a function.
 
 ========================
 5. SAPI changes

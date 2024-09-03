@@ -65,10 +65,11 @@ PHP_MAJOR_VERSION=[$]1
 PHP_MINOR_VERSION=[$]2
 PHP_RELEASE_VERSION=[$]3
 dnl Allow overriding PHP_EXTRA_VERSION through the homonymous env var
-AC_ARG_VAR([PHP_EXTRA_VERSION],[Extra PHP version label suffix, e.g. '-dev', 'rc1', '-acme'])dnl
-AS_IF([test -z "$PHP_EXTRA_VERSION"],[PHP_EXTRA_VERSION=[$]4])
+AC_ARG_VAR([PHP_EXTRA_VERSION],
+  [Extra PHP version label suffix, e.g. '-dev', 'rc1', '-acme'])dnl
+AS_VAR_IF([PHP_EXTRA_VERSION],, [PHP_EXTRA_VERSION=[$]4])
 PHP_VERSION="$PHP_MAJOR_VERSION.$PHP_MINOR_VERSION.$PHP_RELEASE_VERSION$PHP_EXTRA_VERSION"
-PHP_VERSION_ID=`expr [$]PHP_MAJOR_VERSION \* 10000 + [$]PHP_MINOR_VERSION \* 100 + [$]PHP_RELEASE_VERSION`
+PHP_VERSION_ID=$(expr [$]PHP_MAJOR_VERSION \* 10000 + [$]PHP_MINOR_VERSION \* 100 + [$]PHP_RELEASE_VERSION)
 
 dnl Allow version values to be used in Makefile.
 PHP_SUBST([PHP_MAJOR_VERSION])
@@ -100,13 +101,7 @@ dnl ----------------------------------------------------------------------------
 
 PHP_INIT_BUILD_SYSTEM
 
-dnl We want this one before the checks, so the checks can modify CFLAGS.
-AS_VAR_IF([CFLAGS],, [auto_cflags=1])
-
-abs_srcdir=`(cd $srcdir; pwd)`
-abs_builddir=`pwd`
-
-dnl Because `make install` is often performed by the superuser, we create the
+dnl Because 'make install' is often performed by the superuser, we create the
 dnl libs subdirectory as the user who configures PHP. Otherwise, the current
 dnl user will not be able to delete libs or the contents of libs.
 
@@ -152,10 +147,10 @@ dnl Check for -R, etc. switch.
 PHP_RUNPATH_SWITCH
 
 dnl Checks for some support/generator progs.
-PHP_PROG_AWK
 PHP_PROG_BISON([3.0.0])
 PHP_PROG_RE2C([1.0.3], [--no-generation-date])
-PHP_PROG_PHP()
+dnl Find installed PHP. Minimum supported version for gen_stub.php is PHP 7.4.
+PHP_PROG_PHP([7.4])
 
 PHP_ARG_ENABLE([re2c-cgoto],
   [whether to enable computed goto extension with re2c],
@@ -241,7 +236,7 @@ esac
 
 dnl Detect musl libc
 AC_MSG_CHECKING([whether we are using musl libc])
-if command -v ldd >/dev/null && ldd --version 2>&1 | grep -q ^musl
+if command -v ldd >/dev/null && ldd --version 2>&1 | grep ^musl >/dev/null 2>&1
 then
   AC_MSG_RESULT([yes])
   AC_DEFINE([__MUSL__], [1], [Define to 1 when using musl libc.])
@@ -281,16 +276,12 @@ AC_MSG_RESULT([$PHP_SAPI])
 
 dnl Show which binaries were selected.
 AC_MSG_CHECKING([for executable SAPI binaries])
-if test "$PHP_BINARIES"; then
-  AC_MSG_RESULT([$PHP_BINARIES])
-else
-  AC_MSG_RESULT([none])
-fi
+AS_VAR_IF([PHP_BINARIES],,
+  [AC_MSG_RESULT([none])],
+  [AC_MSG_RESULT([$PHP_BINARIES])])
 
 dnl Exit early.
-if test -z "$PHP_INSTALLED_SAPIS"; then
-  AC_MSG_ERROR([Nothing to build.])
-fi
+AS_VAR_IF([PHP_INSTALLED_SAPIS],, [AC_MSG_ERROR([Nothing to build.])])
 
 dnl Add POSIX threads compilation and linker flags when thread safety is enabled
 dnl with either the '--enable-zts' configure option or automatically enabled by
@@ -461,9 +452,9 @@ AC_CHECK_TYPES([socklen_t], [], [], [
 ])
 
 dnl These are defined elsewhere than stdio.h.
-PHP_CHECK_SIZEOF(intmax_t, 0)
-PHP_CHECK_SIZEOF(ssize_t, 8)
-PHP_CHECK_SIZEOF(ptrdiff_t, 8)
+PHP_CHECK_SIZEOF([intmax_t], [0])
+PHP_CHECK_SIZEOF([ssize_t], [8])
+PHP_CHECK_SIZEOF([ptrdiff_t], [8])
 
 dnl Check stdint types (must be after header check).
 PHP_CHECK_STDINT_TYPES
@@ -509,7 +500,7 @@ dnl Check for structure members.
 AC_CHECK_MEMBERS([struct tm.tm_gmtoff],,,[#include <time.h>])
 AC_CHECK_MEMBERS([struct stat.st_blksize, struct stat.st_rdev])
 dnl AC_STRUCT_ST_BLOCKS will screw QNX because fileblocks.o does not exist.
-if test "`uname -s 2>/dev/null`" != "QNX"; then
+if test "$(uname -s 2>/dev/null)" != "QNX"; then
   AC_STRUCT_ST_BLOCKS
 fi
 
@@ -526,7 +517,7 @@ dnl
 dnl At least some versions of FreeBSD seem to have buggy ifunc support, see
 dnl bug #77284. Conservatively don't use ifuncs on FreeBSD prior to version 12.
 AS_CASE([$host_alias], [*-*-*android*|*-*-*uclibc*|*-*-*musl*|*openbsd*], [true], [
-  if test "`uname -s 2>/dev/null`" != "FreeBSD" || test "`uname -U 2>/dev/null`" -ge 1200000; then
+  if test "$(uname -s 2>/dev/null)" != "FreeBSD" || test "$(uname -U 2>/dev/null)" -ge 1200000; then
     AX_GCC_FUNC_ATTRIBUTE([ifunc])
     AX_GCC_FUNC_ATTRIBUTE([target])
   fi
@@ -706,7 +697,19 @@ AC_FUNC_ALLOCA
 PHP_TIME_R_TYPE
 
 AC_CACHE_CHECK([for aarch64 CRC32 API], [php_cv_func___crc32d],
-[AC_LINK_IFELSE([AC_LANG_PROGRAM([#include <arm_acle.h>], [__crc32d(0, 0);])],
+[AC_LINK_IFELSE([AC_LANG_PROGRAM([
+#include <arm_acle.h>
+# if defined(__GNUC__)
+#  if!defined(__clang__)
+#   pragma GCC push_options
+#   pragma GCC target ("+nothing+crc")
+#  elif defined(__APPLE__)
+#   pragma clang attribute push(__attribute__((target("crc"))), apply_to=function)
+#  else
+#   pragma clang attribute push(__attribute__((target("+nothing+crc"))), apply_to=function)
+#  endif
+# endif
+], [__crc32d(0, 0);])],
 [php_cv_func___crc32d=yes],
 [php_cv_func___crc32d=no])])
 AS_VAR_IF([php_cv_func___crc32d], [yes],
@@ -762,20 +765,20 @@ PHP_ARG_ENABLE([gcov],
   [no],
   [no])
 
-if test "$PHP_GCOV" = "yes"; then
-
-  if test "$GCC" != "yes"; then
-    AC_MSG_ERROR([GCC is required for --enable-gcov])
-  fi
+AS_VAR_IF([PHP_GCOV], [yes], [
+  AS_VAR_IF([GCC], [yes],,
+    [AC_MSG_ERROR([GNU C compatible compiler is required for --enable-gcov])])
 
   dnl Check if ccache is being used.
-  case `$php_shtool path $CC` in
-    *ccache*[)] gcc_ccache=yes;;
-    *[)] gcc_ccache=no;;
-  esac
+  AS_CASE([$($php_shtool path $CC)],
+    [*ccache*], [gcc_ccache=yes],
+    [gcc_ccache=no])
 
   if test "$gcc_ccache" = "yes" && (test -z "$CCACHE_DISABLE" || test "$CCACHE_DISABLE" != "1"); then
-    AC_MSG_ERROR([ccache must be disabled when --enable-gcov option is used. You can disable ccache by setting environment variable CCACHE_DISABLE=1.])
+    AC_MSG_ERROR(m4_text_wrap([
+      ccache must be disabled when --enable-gcov option is used. You can disable
+      ccache by setting environment variable CCACHE_DISABLE=1.
+    ]))
   fi
 
   AC_DEFINE([HAVE_GCOV], [1], [Define to 1 if GCOV code coverage is enabled.])
@@ -784,14 +787,14 @@ if test "$PHP_GCOV" = "yes"; then
   dnl Remove all optimization flags from CFLAGS.
   changequote({,})
   dnl Discard known '-O...' flags, including just '-O', but do not remove only '-O' in '-Ounknown'
-  CFLAGS=`echo "$CFLAGS" | $SED -e 's/-O\([0-9gsz]\|fast\|\)\([\t ]\|$\)//g'`
-  CXXFLAGS=`echo "$CXXFLAGS" | $SED -e 's/-O\([0-9gsz]\|fast\|\)\([\t ]\|$\)//g'`
+  CFLAGS=$(echo "$CFLAGS" | $SED -e 's/-O\([0-9gsz]\|fast\|\)\([\t ]\|$\)//g')
+  CXXFLAGS=$(echo "$CXXFLAGS" | $SED -e 's/-O\([0-9gsz]\|fast\|\)\([\t ]\|$\)//g')
   changequote([,])
 
   dnl Add the special gcc flags.
   CFLAGS="$CFLAGS -O0 -fprofile-arcs -ftest-coverage"
   CXXFLAGS="$CXXFLAGS -O0 -fprofile-arcs -ftest-coverage"
-fi
+])
 
 PHP_ARG_ENABLE([debug],
   [whether to include debugging symbols],
@@ -805,8 +808,8 @@ AS_VAR_IF([PHP_DEBUG], [yes], [
   ZEND_DEBUG=yes
   changequote({,})
   dnl Discard known '-O...' flags, including just '-O', but do not remove only '-O' in '-Ounknown'
-  CFLAGS=`echo "$CFLAGS" | $SED -e 's/-O\([0-9gsz]\|fast\|\)\([\t ]\|$\)//g'`
-  CXXFLAGS=`echo "$CXXFLAGS" | $SED -e 's/-O\([0-9gsz]\|fast\|\)\([\t ]\|$\)//g'`
+  CFLAGS=$(echo "$CFLAGS" | $SED -e 's/-O\([0-9gsz]\|fast\|\)\([\t ]\|$\)//g')
+  CXXFLAGS=$(echo "$CXXFLAGS" | $SED -e 's/-O\([0-9gsz]\|fast\|\)\([\t ]\|$\)//g')
   changequote([,])
   dnl Add -O0 only if GCC or ICC is used.
   if test "$GCC" = "yes" || test "$ICC" = "yes"; then
@@ -849,7 +852,7 @@ AS_VAR_IF([ZEND_ZTS], [yes], [PHP_THREAD_SAFETY=yes], [PHP_THREAD_SAFETY=no])
 
 AS_VAR_IF([PHP_THREAD_SAFETY], [yes], [
   AS_VAR_IF([pthreads_working], [yes], [],
-    [AC_MSG_FAILURE(m4_normalize([
+    [AC_MSG_FAILURE(m4_text_wrap([
       Unable to verify system support for POSIX Threads, which are required for
       PHP thread safety (ZTS) build.
     ]))])
@@ -877,14 +880,7 @@ PHP_ARG_WITH([layout],
   [PHP],
   [no])
 
-case $PHP_LAYOUT in
-  GNU)
-    oldstyleextdir=no
-    ;;
-  *)
-    oldstyleextdir=yes
-    ;;
-esac
+AS_CASE([$PHP_LAYOUT], [GNU], [oldstyleextdir=no], [oldstyleextdir=yes])
 
 PHP_ARG_WITH([config-file-path],
   [path to configuration file],
@@ -893,16 +889,10 @@ PHP_ARG_WITH([config-file-path],
   [DEFAULT],
   [no])
 
-if test "$PHP_CONFIG_FILE_PATH" = "DEFAULT"; then
-  case $PHP_LAYOUT in
-    GNU)
-      PHP_CONFIG_FILE_PATH=$sysconfdir
-      ;;
-    *)
-      PHP_CONFIG_FILE_PATH=$libdir
-      ;;
-  esac
-fi
+AS_VAR_IF([PHP_CONFIG_FILE_PATH], [DEFAULT],
+  [AS_CASE([$PHP_LAYOUT],
+    [GNU], [PHP_CONFIG_FILE_PATH=$sysconfdir],
+    [PHP_CONFIG_FILE_PATH=$libdir])])
 
 AC_MSG_CHECKING([where to scan for configuration files])
 PHP_ARG_WITH([config-file-scan-dir],,
@@ -911,9 +901,7 @@ PHP_ARG_WITH([config-file-scan-dir],,
   [DEFAULT],
   [no])
 
-if test "$PHP_CONFIG_FILE_SCAN_DIR" = "DEFAULT"; then
-  PHP_CONFIG_FILE_SCAN_DIR=
-fi
+AS_VAR_IF([PHP_CONFIG_FILE_SCAN_DIR], [DEFAULT], [PHP_CONFIG_FILE_SCAN_DIR=])
 AC_MSG_RESULT([$PHP_CONFIG_FILE_SCAN_DIR])
 
 PHP_ARG_ENABLE([sigchild],
@@ -936,14 +924,13 @@ PHP_ARG_ENABLE([libgcc],
   [no],
   [no])
 
-if test "$PHP_LIBGCC" = "yes"; then
+AS_VAR_IF([PHP_LIBGCC], [yes], [
   PHP_LIBGCC_LIBPATH([gcc])
-  if test -z "$libgcc_libpath"; then
-    AC_MSG_ERROR([Cannot locate libgcc. Make sure that gcc is in your path])
-  fi
+  AS_VAR_IF([libgcc_libpath],,
+    [AC_MSG_ERROR([Cannot locate libgcc. Make sure that gcc is in your path])])
   PHP_ADD_LIBPATH([$libgcc_libpath])
   PHP_ADD_LIBRARY([gcc], [yes])
-fi
+])
 
 PHP_ARG_ENABLE([short-tags],
   [whether to enable short tags by default],
@@ -1028,16 +1015,14 @@ PHP_ARG_ENABLE([fd-setsize],,
   [no],
   [no])
 
-if test "$PHP_FD_SETSIZE" != "no"; then
+AS_VAR_IF([PHP_FD_SETSIZE], [no], [AC_MSG_RESULT([using system default])], [
   if test "0$PHP_FD_SETSIZE" -gt 0 2>/dev/null; then
     CPPFLAGS="$CPPFLAGS -DFD_SETSIZE=$PHP_FD_SETSIZE"
     AC_MSG_RESULT([using $PHP_FD_SETSIZE])
   else
     AC_MSG_ERROR([Invalid value passed to --enable-fd-setsize!])
   fi
-else
-  AC_MSG_RESULT([using system default])
-fi
+])
 
 PHP_ARG_ENABLE([werror],,
   [AS_HELP_STRING([--enable-werror],
@@ -1164,7 +1149,7 @@ AS_VAR_IF([PHP_PEAR], [no],, [
   AC_MSG_WARN([The --with-pear option is deprecated])
 
   dnl PEAR dependencies.
-  AS_VAR_IF([PHP_XML], [no], [AC_MSG_ERROR(m4_normalize([
+  AS_VAR_IF([PHP_XML], [no], [AC_MSG_ERROR(m4_text_wrap([
     PEAR requires XML to be enabled. Add '--enable-xml' to the configure line,
     or disable PEAR (--without-pear).
   ]))])
@@ -1298,9 +1283,7 @@ if test "$fiber_asm" = 'yes'; then
     [$fiber_asm_cflag])
   AC_MSG_RESULT([$fiber_asm_file])
 else
-  if test "$fiber_os" = 'mac'; then
-    AC_DEFINE([_XOPEN_SOURCE], 1, [ ])
-  fi
+  AS_VAR_IF([fiber_os], [mac], [AC_DEFINE([_XOPEN_SOURCE], [1], [ ])])
   AC_CHECK_HEADER([ucontext.h],
     [AC_DEFINE([ZEND_FIBER_UCONTEXT], [1],
       [Define to 1 if Zend fiber uses ucontext instead of boost context.])],
@@ -1333,64 +1316,54 @@ AS_VAR_IF([program_prefix], [NONE], [program_prefix=])
 AS_VAR_IF([program_suffix], [NONE], [program_suffix=])
 
 orig_libdir=$libdir
-case $libdir in
-  '${exec_prefix}/lib')
-    libdir=$libdir/php
-    ;;
-esac
-case `eval echo $datadir` in
-  '${prefix}/share')
-    datadir=$datadir/php
-    ;;
-esac
+AS_CASE([$libdir],
+  ['${exec_prefix}/lib'], [libdir=$libdir/php])
 
-phptempdir=`pwd`/libs
+AS_CASE([$(eval echo $datadir)],
+  ['${prefix}/share'], [datadir=$datadir/php])
+
+phptempdir=$(pwd)/libs
 
 old_exec_prefix=$exec_prefix
 old_libdir=$libdir
 old_datadir=$datadir
-exec_prefix=`eval echo $exec_prefix`
-libdir=`eval echo $libdir`
-datadir=`eval eval echo $datadir`
+exec_prefix=$(eval echo $exec_prefix)
+libdir=$(eval echo $libdir)
+datadir=$(eval eval echo $datadir)
 
 dnl Build extension directory path.
-ZEND_MODULE_API_NO=`$EGREP '#define ZEND_MODULE_API_NO ' $srcdir/Zend/zend_modules.h|"${SED}" 's/#define ZEND_MODULE_API_NO //'`
+ZEND_MODULE_API_NO=$($EGREP '#define ZEND_MODULE_API_NO ' $srcdir/Zend/zend_modules.h|"${SED}" 's/#define ZEND_MODULE_API_NO //')
 
-if test -z "$EXTENSION_DIR"; then
+AS_VAR_IF([EXTENSION_DIR],, [
   extbasedir=$ZEND_MODULE_API_NO
-  if test "$oldstyleextdir" = "yes"; then
+  AS_VAR_IF([oldstyleextdir], [yes], [
     AS_VAR_IF([PHP_DEBUG], [1], [part1=debug], [part1=no-debug])
     AS_VAR_IF([PHP_THREAD_SAFETY], [yes], [part2=zts], [part2=non-zts])
     extbasedir=$part1-$part2-$extbasedir
     EXTENSION_DIR=$libdir/extensions/$extbasedir
-  else
+  ], [
     AS_VAR_IF([PHP_THREAD_SAFETY], [yes], [extbasedir=$extbasedir-zts])
     AS_VAR_IF([PHP_DEBUG], [1], [extbasedir=$extbasedir-debug])
     EXTENSION_DIR=$libdir/$extbasedir
-  fi
-fi
+  ])
+])
 
-case $PHP_LAYOUT in
-  GNU)
-    datarootdir=$prefix/share
-    ;;
-  *)
-    datarootdir=$prefix/php
-    ;;
-esac
+AS_CASE([$PHP_LAYOUT],
+  [GNU], [datarootdir=$prefix/share],
+  [datarootdir=$prefix/php])
 
 dnl Expand all directory names for use in macros/constants.
-EXPANDED_PEAR_INSTALLDIR=`eval echo $PEAR_INSTALLDIR`
-EXPANDED_EXTENSION_DIR=`eval echo $EXTENSION_DIR`
-EXPANDED_LOCALSTATEDIR=`eval echo $localstatedir`
-EXPANDED_BINDIR=`eval echo $bindir`
-EXPANDED_SBINDIR=`eval echo $sbindir`
-EXPANDED_MANDIR=`eval echo $mandir`
+EXPANDED_PEAR_INSTALLDIR=$(eval echo $PEAR_INSTALLDIR)
+EXPANDED_EXTENSION_DIR=$(eval echo $EXTENSION_DIR)
+EXPANDED_LOCALSTATEDIR=$(eval echo $localstatedir)
+EXPANDED_BINDIR=$(eval echo $bindir)
+EXPANDED_SBINDIR=$(eval echo $sbindir)
+EXPANDED_MANDIR=$(eval echo $mandir)
 EXPANDED_LIBDIR=$libdir
-EXPANDED_SYSCONFDIR=`eval echo $sysconfdir`
+EXPANDED_SYSCONFDIR=$(eval echo $sysconfdir)
 EXPANDED_DATADIR=$datadir
-EXPANDED_PHP_CONFIG_FILE_PATH=`eval echo "$PHP_CONFIG_FILE_PATH"`
-EXPANDED_PHP_CONFIG_FILE_SCAN_DIR=`eval echo "$PHP_CONFIG_FILE_SCAN_DIR"`
+EXPANDED_PHP_CONFIG_FILE_PATH=$(eval echo "$PHP_CONFIG_FILE_PATH")
+EXPANDED_PHP_CONFIG_FILE_SCAN_DIR=$(eval echo "$PHP_CONFIG_FILE_SCAN_DIR")
 INCLUDE_PATH=.:$EXPANDED_PEAR_INSTALLDIR
 
 exec_prefix=$old_exec_prefix
@@ -1424,22 +1397,35 @@ PHP_REMOVE_USR_LIB([LDFLAGS])
 EXTRA_LDFLAGS="$EXTRA_LDFLAGS $PHP_LDFLAGS"
 EXTRA_LDFLAGS_PROGRAM="$EXTRA_LDFLAGS_PROGRAM $PHP_LDFLAGS"
 
-UNAME=`uname -a | xargs`
-PHP_UNAME=${PHP_UNAME:-$UNAME}
-AC_DEFINE_UNQUOTED(PHP_UNAME,"$PHP_UNAME",[uname -a output])
-PHP_OS=`uname | xargs`
-AC_DEFINE_UNQUOTED(PHP_OS,"$PHP_OS",[uname output])
-PHP_BUILD_SYSTEM=${PHP_BUILD_SYSTEM:-$PHP_UNAME}
-AC_DEFINE_UNQUOTED(PHP_BUILD_SYSTEM,"$PHP_BUILD_SYSTEM",[builder uname output])
-if test -n "${PHP_BUILD_PROVIDER}"; then
-  AC_DEFINE_UNQUOTED(PHP_BUILD_PROVIDER,"$PHP_BUILD_PROVIDER",[build provider])
-fi
-if test -n "${PHP_BUILD_COMPILER}"; then
-  AC_DEFINE_UNQUOTED(PHP_BUILD_COMPILER,"$PHP_BUILD_COMPILER",[used compiler for build])
-fi
-if test -n "${PHP_BUILD_ARCH}"; then
-  AC_DEFINE_UNQUOTED(PHP_BUILD_ARCH,"$PHP_BUILD_ARCH",[build architecture])
-fi
+AC_ARG_VAR([PHP_UNAME],
+  [System information (defaults to the 'uname -a' output)])
+AS_VAR_IF([PHP_UNAME],, [PHP_UNAME=$(uname -a | xargs)])
+AC_DEFINE_UNQUOTED([PHP_UNAME], ["$PHP_UNAME"], [The 'uname -a' output.])
+
+PHP_OS=$(uname | xargs)
+AC_DEFINE_UNQUOTED([PHP_OS], ["$PHP_OS"], [The 'uname' output.])
+
+AC_ARG_VAR([PHP_BUILD_SYSTEM],
+  [The system that PHP was built on (defaults to the 'uname -a' output)])
+AS_VAR_IF([PHP_BUILD_SYSTEM],, [PHP_BUILD_SYSTEM=$PHP_UNAME])
+AC_DEFINE_UNQUOTED([PHP_BUILD_SYSTEM], ["$PHP_BUILD_SYSTEM"],
+  [The system that PHP was built on.])
+
+AC_ARG_VAR([PHP_BUILD_PROVIDER], [The PHP build provider information])
+AS_VAR_IF([PHP_BUILD_PROVIDER],,,
+  [AC_DEFINE_UNQUOTED([PHP_BUILD_PROVIDER], ["$PHP_BUILD_PROVIDER"],
+    [The PHP build provider information.])])
+
+AC_ARG_VAR([PHP_BUILD_COMPILER],
+  [Information about the compiler used for the PHP build])
+AS_VAR_IF([PHP_BUILD_COMPILER],,,
+  [AC_DEFINE_UNQUOTED([PHP_BUILD_COMPILER], ["$PHP_BUILD_COMPILER"],
+    [The compiler used for the PHP build.])])
+
+AC_ARG_VAR([PHP_BUILD_ARCH], [The build architecture])
+AS_VAR_IF([PHP_BUILD_ARCH],,,
+  [AC_DEFINE_UNQUOTED([PHP_BUILD_ARCH], ["$PHP_BUILD_ARCH"],
+    [The build architecture.])])
 
 PHP_SUBST([PHP_FASTCGI_OBJS])
 PHP_SUBST([PHP_SAPI_OBJS])
@@ -1492,18 +1478,16 @@ PHP_SUBST([PHP_FRAMEWORKS])
 PHP_SUBST([PHP_FRAMEWORKPATH])
 PHP_SUBST([INSTALL_HEADERS])
 
-old_CC=$CC
-
 if test "$PHP_THREAD_SAFETY" = "yes" && test -n "$ac_cv_pthreads_cflags"; then
   CXXFLAGS="$CXXFLAGS $ac_cv_pthreads_cflags"
   CPPFLAGS="$CPPFLAGS $ac_cv_pthreads_cflags"
 fi
 
 dnl Enable -Werror late, because it may break configure checks throwing warnings.
-if test "$PHP_WERROR" = "yes"; then
+AS_VAR_IF([PHP_WERROR], [yes], [
   CFLAGS="$CFLAGS -Werror"
   CXXFLAGS="$CXXFLAGS -Werror"
-fi
+])
 
 if test "$PHP_MEMORY_SANITIZER" = "yes" &&
    test "$PHP_ADDRESS_SANITIZER" = "yes"; then
@@ -1511,15 +1495,15 @@ if test "$PHP_MEMORY_SANITIZER" = "yes" &&
 fi
 
 dnl Enable -fsanitize=memory late, because interceptors may break linking detection.
-if test "$PHP_MEMORY_SANITIZER" = "yes"; then
-  AX_CHECK_COMPILE_FLAG([-fsanitize=memory -fsanitize-memory-track-origins], [
+AS_VAR_IF([PHP_MEMORY_SANITIZER], [yes],
+  [AX_CHECK_COMPILE_FLAG([-fsanitize=memory -fsanitize-memory-track-origins], [
     CFLAGS="$CFLAGS -fsanitize=memory -fsanitize-memory-track-origins"
     CXXFLAGS="$CXXFLAGS -fsanitize=memory -fsanitize-memory-track-origins"
   ], [AC_MSG_ERROR([MemorySanitizer is not available])])
-fi
+])
 
 AS_VAR_IF([PHP_ADDRESS_SANITIZER], [yes],
-  [AS_VAR_IF([PHP_VALGRIND], [no],, [AC_MSG_ERROR(m4_normalize([
+  [AS_VAR_IF([PHP_VALGRIND], [no],, [AC_MSG_ERROR(m4_text_wrap([
     Valgrind and address sanitizer are not compatible. Either disable Valgrind
     (remove --with-valgrind) or disable address sanitizer (remove
     --enable-address-sanitizer).
@@ -1531,8 +1515,8 @@ AS_VAR_IF([PHP_ADDRESS_SANITIZER], [yes],
   ], [AC_MSG_ERROR([AddressSanitizer is not available])])
 ])
 
-if test "$PHP_UNDEFINED_SANITIZER" = "yes"; then
-  AX_CHECK_COMPILE_FLAG([-fsanitize=undefined], [
+AS_VAR_IF([PHP_UNDEFINED_SANITIZER], [yes],
+  [AX_CHECK_COMPILE_FLAG([-fsanitize=undefined], [
     CFLAGS="$CFLAGS -fsanitize=undefined -fno-sanitize-recover=undefined"
     CXXFLAGS="$CXXFLAGS -fsanitize=undefined -fno-sanitize-recover=undefined"
     AX_CHECK_COMPILE_FLAG([-fno-sanitize=object-size], [
@@ -1544,23 +1528,27 @@ if test "$PHP_UNDEFINED_SANITIZER" = "yes"; then
 
     dnl Clang 17 adds stricter function pointer compatibility checks where pointer args cannot be
     dnl cast to void*. In that case, set -fno-sanitize=function.
-    OLD_CFLAGS="$CFLAGS"
+    OLD_CFLAGS=$CFLAGS
     CFLAGS="$CFLAGS -fno-sanitize-recover=undefined"
-    AC_CACHE_CHECK([whether to add -fno-sanitize=function],[php_cv_ubsan_no_function],[
-    AC_RUN_IFELSE([AC_LANG_SOURCE([[
+    AC_CACHE_CHECK([whether to add -fno-sanitize=function],
+    [php_cv_ubsan_no_function],
+    [AC_RUN_IFELSE([AC_LANG_SOURCE([
 void foo(char *string) {}
 int main(void) {
   void (*f)(void *) = (void (*)(void *))foo;
   f("foo");
 }
-    ]])],[php_cv_ubsan_no_function=no],[php_cv_ubsan_no_function=yes],[php_cv_ubsan_no_function=no])])
-    CFLAGS="$OLD_CFLAGS"
-    if test "$php_cv_ubsan_no_function" = yes; then
+    ])],
+    [php_cv_ubsan_no_function=no],
+    [php_cv_ubsan_no_function=yes],
+    [php_cv_ubsan_no_function=no])])
+    CFLAGS=$OLD_CFLAGS
+    AS_VAR_IF([php_cv_ubsan_no_function], [yes], [
       CFLAGS="$CFLAGS -fno-sanitize=function"
       CXXFLAGS="$CFLAGS -fno-sanitize=function"
-    fi
+    ])
   ], [AC_MSG_ERROR([UndefinedBehaviorSanitizer is not available])])
-fi
+])
 
 if test "$PHP_MEMORY_SANITIZER" = "yes" ||
    test "$PHP_ADDRESS_SANITIZER" = "yes" ||
@@ -1576,7 +1564,7 @@ dnl
 PHP_HELP_SEPARATOR([Libtool:])
 PHP_CONFIGURE_PART([Configuring libtool])
 
-dnl Silence warning: `ar: 'u' modifier ignored since 'D' is the default`
+dnl Silence warning: "ar: 'u' modifier ignored since 'D' is the default".
 dnl See https://github.com/php/php-src/pull/3017
 AC_SUBST([AR_FLAGS], [cr])
 
@@ -1595,8 +1583,6 @@ PHP_SET_LIBTOOL_VARIABLE([--silent])
 
 dnl libtool 1.4.3 needs this.
 PHP_SET_LIBTOOL_VARIABLE([--preserve-dup-deps])
-
-CC=$old_CC
 
 PHP_CONFIGURE_PART([Generating files])
 
@@ -1759,6 +1745,7 @@ PHP_ADD_SOURCES([Zend], m4_normalize([
     zend_iterators.c
     zend_language_parser.c
     zend_language_scanner.c
+    zend_lazy_objects.c
     zend_list.c
     zend_llist.c
     zend_max_execution_timer.c
@@ -1797,7 +1784,7 @@ PHP_ADD_MAKEFILE_FRAGMENT([$abs_srcdir/Zend/Makefile.frag],
 AC_DEFINE([HAVE_BUILD_DEFS_H], [1],
   [Define to 1 if PHP has the <main/build-defs.h> header file.])
 
-PHP_ADD_BUILD_DIR(m4_normalize([
+PHP_ADD_BUILD_DIR([
   main
   main/streams
   scripts
@@ -1806,7 +1793,7 @@ PHP_ADD_BUILD_DIR(m4_normalize([
   Zend
   Zend/asm
   Zend/Optimizer
-]))
+])
 
 AC_CONFIG_FILES([
   main/build-defs.h
@@ -1818,7 +1805,25 @@ AC_CONFIG_FILES([
 
 AC_CONFIG_COMMANDS_PRE([PHP_PATCH_CONFIG_HEADERS([main/php_config.h.in])])
 
-AC_CONFIG_COMMANDS([default],[
+AC_CONFIG_COMMANDS([Zend/zend_config.h], [
+cat >Zend/zend_config.h <<FEO
+#include <../main/php_config.h>
+FEO
+])
+
+AC_CONFIG_COMMANDS([main/internal_functions.c], [], [
+  AWK="$AWK" $SHELL $srcdir/build/genif.sh \
+    $srcdir/main/internal_functions.c.in \
+    "$EXT_STATIC" > main/internal_functions.c
+])
+
+AC_CONFIG_COMMANDS([main/internal_functions_cli.c], [], [
+  AWK="$AWK" $SHELL $srcdir/build/genif.sh \
+    $srcdir/main/internal_functions.c.in \
+    "$EXT_CLI_STATIC" > main/internal_functions_cli.c
+])
+
+AC_CONFIG_COMMANDS([default], [
 cat <<X
 
 +--------------------------------------------------------------------+
@@ -1833,17 +1838,5 @@ cat <<X
 Thank you for using PHP.
 
 X
-],[
-dnl Create configuration headers.
-dnl ----------------------------------------------------------------------------
-cat >Zend/zend_config.h <<FEO
-#include <../main/php_config.h>
-FEO
-
-echo "creating main/internal_functions.c"
-AWK="$AWK" sh $srcdir/build/genif.sh $srcdir/main/internal_functions.c.in "$EXT_STATIC" > main/internal_functions.c
-
-echo "creating main/internal_functions_cli.c"
-AWK="$AWK" sh $srcdir/build/genif.sh $srcdir/main/internal_functions.c.in "$EXT_CLI_STATIC" > main/internal_functions_cli.c
 ])
 AC_OUTPUT

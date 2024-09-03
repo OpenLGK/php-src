@@ -30,6 +30,7 @@
 #include "ext/pdo/php_pdo_driver.h"
 #include "php_pdo_firebird.h"
 #include "php_pdo_firebird_int.h"
+#include "pdo_firebird_utils.h"
 
 static int php_firebird_alloc_prepare_stmt(pdo_dbh_t*, const zend_string*, XSQLDA*, isc_stmt_handle*,
 	HashTable*);
@@ -462,21 +463,21 @@ static int php_firebird_preprocess(const zend_string* sql, char* sql_out, HashTa
 
 #if FB_API_VER >= 40
 /* set coercing a data type */
-static void set_coercing_data_type(XSQLDA* sqlda)
+static void set_coercing_output_data_types(XSQLDA* sqlda)
 {
-	/* Data types introduced in Firebird 4.0 are difficult to process using the Firebird Legacy API. */ 
-	/* These data types include DECFLOAT(16), DECFLOAT(34), INT128 (NUMERIC/DECIMAL(38, x)), */
-	/* TIMESTAMP WITH TIME ZONE, and TIME WITH TIME ZONE. In any case, at least the first three data types */
-	/* can only be mapped to strings. The last two too, but for them it is potentially possible to set */
-	/* the display format, as is done for TIMESTAMP. This function allows you to ensure minimal performance */ 
-	/* of queries if they contain columns and parameters of the above types. */
+	/* Data types introduced in Firebird 4.0 are difficult to process using the Firebird Legacy API. */
+	/* These data types include DECFLOAT(16), DECFLOAT(34), INT128 (NUMERIC/DECIMAL(38, x)). */
+	/* In any case, at this data types can only be mapped to strings. */
+	/* This function allows you to ensure minimal performance of queries if they contain columns of the above types. */
 	unsigned int i;
 	short dtype;
 	short nullable;
 	XSQLVAR* var;
+	unsigned fb_client_version = fb_get_client_version();
+	unsigned fb_client_major_version = (fb_client_version >> 8) & 0xFF;
 	for (i=0, var = sqlda->sqlvar; i < sqlda->sqld; i++, var++) {
 		dtype = (var->sqltype & ~1); /* drop flag bit  */
-		nullable = (var->sqltype & 1); 
+		nullable = (var->sqltype & 1);
 		switch(dtype) {
 			case SQL_INT128:
 				var->sqltype = SQL_VARYING + nullable;
@@ -485,28 +486,37 @@ static void set_coercing_data_type(XSQLDA* sqlda)
 				break;
 
 			case SQL_DEC16:
-			    var->sqltype = SQL_VARYING + nullable;
+				var->sqltype = SQL_VARYING + nullable;
 				var->sqllen = 24;
 				break;
 
 			case SQL_DEC34:
-			    var->sqltype = SQL_VARYING + nullable;
+				var->sqltype = SQL_VARYING + nullable;
 				var->sqllen = 43;
 				break;
 
 			case SQL_TIMESTAMP_TZ:
-				var->sqltype = SQL_VARYING + nullable;
-				var->sqllen = 58;
+			    if (fb_client_major_version < 4) {
+					/* If the client version is below 4.0, then it is impossible to handle time zones natively, */
+					/* so we convert these types to a string. */
+					var->sqltype = SQL_VARYING + nullable;
+					var->sqllen = 58;
+				}
 				break;
 
 			case SQL_TIME_TZ:
-				var->sqltype = SQL_VARYING + nullable;
-				var->sqllen = 46;
+				if (fb_client_major_version < 4) {
+					/* If the client version is below 4.0, then it is impossible to handle time zones natively, */
+					/* so we convert these types to a string. */
+					var->sqltype = SQL_VARYING + nullable;
+					var->sqllen = 46;
+				}
 				break;
+
 			default:
-			    break;
+				break;
 		}
-	}	
+	}
 }
 #endif
 
@@ -545,14 +555,12 @@ void php_firebird_set_error(pdo_dbh_t *dbh, pdo_stmt_t *stmt, const char *state,
 		einfo->errmsg_length = read_len;
 		einfo->errmsg = pestrndup(buf, read_len, dbh->is_persistent);
 
-#if FB_API_VER >= 25
 		char sqlstate[sizeof(pdo_error_type)];
 		fb_sqlstate(sqlstate, H->isc_status);
 		if (sqlstate != NULL && strlen(sqlstate) < sizeof(pdo_error_type)) {
 			strcpy(*error_code, sqlstate);
 			goto end;
 		}
-#endif
 	} else if (msg && msg_len) {
 		einfo->errmsg_length = msg_len;
 		einfo->errmsg = pestrndup(msg, einfo->errmsg_length, dbh->is_persistent);
@@ -657,7 +665,7 @@ static bool firebird_handle_preparer(pdo_dbh_t *dbh, zend_string *sql, /* {{{ */
 
 #if FB_API_VER >= 40
 		/* set coercing a data type */
-		set_coercing_data_type(&S->out_sqlda);
+		set_coercing_output_data_types(&S->out_sqlda);
 #endif
 
 		/* allocate the input descriptors */
@@ -674,10 +682,13 @@ static bool firebird_handle_preparer(pdo_dbh_t *dbh, zend_string *sql, /* {{{ */
 				break;
 			}
 
-#if FB_API_VER >= 40
-			/* set coercing a data type */
-			set_coercing_data_type(S->in_sqlda);
-#endif
+			/* make all parameters nullable */
+			unsigned int i;
+			XSQLVAR* var;			
+			for (i = 0, var = S->in_sqlda->sqlvar; i < S->in_sqlda->sqld; i++, var++) {
+				/* The low bit of sqltype indicates that the parameter can take a NULL value */
+				var->sqltype |= 1;
+			}
 		}
 
 		stmt->driver_data = S;
@@ -986,12 +997,6 @@ static int php_firebird_alloc_prepare_stmt(pdo_dbh_t *dbh, const zend_string *sq
 	pdo_firebird_db_handle *H = (pdo_firebird_db_handle *)dbh->driver_data;
 	char *new_sql;
 
-	/* Firebird allows SQL statements up to 64k, so bail if it doesn't fit */
-	if (ZSTR_LEN(sql) > 65536) {
-		php_firebird_error_with_info(dbh, "01004", strlen("01004"), NULL, 0);
-		return 0;
-	}
-
 	/* allocate the statement */
 	if (isc_dsql_allocate_statement(H->isc_status, &H->db, s)) {
 		php_firebird_error(dbh);
@@ -1245,7 +1250,8 @@ static int pdo_firebird_get_attribute(pdo_dbh_t *dbh, zend_long attr, zval *val)
 				ZVAL_STRING(val, tmp);
 				return 1;
 			}
-			return -1;
+			/* TODO Check this is correct? */
+			ZEND_FALLTHROUGH;
 
 		case PDO_ATTR_FETCH_TABLE_NAMES:
 			ZVAL_BOOL(val, H->fetch_table_names);
@@ -1275,7 +1281,6 @@ static int pdo_firebird_get_attribute(pdo_dbh_t *dbh, zend_long attr, zval *val)
 }
 /* }}} */
 
-#if FB_API_VER >= 30
 /* called by PDO to check liveness */
 static zend_result pdo_firebird_check_liveness(pdo_dbh_t *dbh) /* {{{ */
 {
@@ -1285,7 +1290,6 @@ static zend_result pdo_firebird_check_liveness(pdo_dbh_t *dbh) /* {{{ */
 	return fb_ping(H->isc_status, &H->db) ? FAILURE : SUCCESS;
 }
 /* }}} */
-#endif
 
 /* called by PDO to retrieve driver-specific information about an error that has occurred */
 static void pdo_firebird_fetch_error_func(pdo_dbh_t *dbh, pdo_stmt_t *stmt, zval *info) /* {{{ */
@@ -1325,11 +1329,7 @@ static const struct pdo_dbh_methods firebird_methods = { /* {{{ */
 	NULL, /* last_id not supported */
 	pdo_firebird_fetch_error_func,
 	pdo_firebird_get_attribute,
-#if FB_API_VER >= 30
 	pdo_firebird_check_liveness,
-#else
-	NULL,
-#endif
 	NULL, /* get driver methods */
 	NULL, /* request shutdown */
 	pdo_firebird_in_manually_transaction,

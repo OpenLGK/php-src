@@ -203,6 +203,16 @@ static const libxml_doc_props default_doc_props = {
 	.classmap = NULL,
 };
 
+ZEND_DECLARE_MODULE_GLOBALS(dom)
+
+static PHP_GINIT_FUNCTION(dom)
+{
+#if defined(COMPILE_DL_DOM) && defined(ZTS)
+	ZEND_TSRMLS_CACHE_UPDATE();
+#endif
+	dom_globals->suppress_warnings = false;
+}
+
 /* {{{ dom_get_doc_props() */
 dom_doc_propsptr dom_get_doc_props(php_libxml_ref_obj *document)
 {
@@ -355,16 +365,32 @@ static zval *dom_get_property_ptr_ptr(zend_object *object, zend_string *name, in
 	return NULL;
 }
 
+static zend_always_inline const dom_prop_handler *dom_get_prop_handler(const dom_object *obj, zend_string *name, void **cache_slot)
+{
+	const dom_prop_handler *hnd = NULL;
+
+	if (obj->prop_handler != NULL) {
+		if (cache_slot && *cache_slot == obj->prop_handler) {
+			hnd = *(cache_slot + 1);
+		}
+		if (!hnd) {
+			hnd = zend_hash_find_ptr(obj->prop_handler, name);
+			if (cache_slot) {
+				*cache_slot = obj->prop_handler;
+				*(cache_slot + 1) = (void *) hnd;
+			}
+		}
+	}
+
+	return hnd;
+}
+
 /* {{{ dom_read_property */
 zval *dom_read_property(zend_object *object, zend_string *name, int type, void **cache_slot, zval *rv)
 {
 	dom_object *obj = php_dom_obj_from_obj(object);
 	zval *retval;
-	dom_prop_handler *hnd = NULL;
-
-	if (obj->prop_handler != NULL) {
-		hnd = zend_hash_find_ptr(obj->prop_handler, name);
-	}
+	const dom_prop_handler *hnd = dom_get_prop_handler(obj, name, cache_slot);
 
 	if (hnd) {
 		int ret = hnd->read_func(obj, rv);
@@ -384,19 +410,26 @@ zval *dom_read_property(zend_object *object, zend_string *name, int type, void *
 zval *dom_write_property(zend_object *object, zend_string *name, zval *value, void **cache_slot)
 {
 	dom_object *obj = php_dom_obj_from_obj(object);
-	dom_prop_handler *hnd = NULL;
-
-	if (obj->prop_handler != NULL) {
-		hnd = zend_hash_find_ptr(obj->prop_handler, name);
-	}
+	const dom_prop_handler *hnd = dom_get_prop_handler(obj, name, cache_slot);
 
 	if (hnd) {
-		if (!hnd->write_func) {
+		if (UNEXPECTED(!hnd->write_func)) {
 			zend_readonly_property_modification_error_ex(ZSTR_VAL(object->ce->name), ZSTR_VAL(name));
 			return &EG(error_zval);
 		}
 
-		zend_property_info *prop = zend_get_property_info(object->ce, name, /* silent */ true);
+		zend_property_info *prop = NULL;
+		if (cache_slot) {
+			ZEND_ASSERT(*cache_slot == obj->prop_handler);
+			prop = *(cache_slot + 2);
+		}
+		if (!prop) {
+			prop = zend_get_property_info(object->ce, name, /* silent */ true);
+			if (cache_slot) {
+				*(cache_slot + 2) = prop;
+			}
+		}
+
 		ZEND_ASSERT(prop && ZEND_TYPE_IS_SET(prop->type));
 		zval tmp;
 		ZVAL_COPY(&tmp, value);
@@ -464,6 +497,8 @@ static HashTable* dom_get_debug_info_helper(zend_object *object, int *is_temp) /
 		return debug_info;
 	}
 
+	DOM_G(suppress_warnings) = true;
+
 	object_str = ZSTR_INIT_LITERAL("(object value omitted)", false);
 
 	ZEND_HASH_MAP_FOREACH_STR_KEY_PTR(prop_handlers, string_key, entry) {
@@ -485,6 +520,8 @@ static HashTable* dom_get_debug_info_helper(zend_object *object, int *is_temp) /
 	} ZEND_HASH_FOREACH_END();
 
 	zend_string_release_ex(object_str, false);
+
+	DOM_G(suppress_warnings) = false;
 
 	return debug_info;
 }
@@ -668,7 +705,11 @@ zend_module_entry dom_module_entry = { /* {{{ */
 	NULL,
 	PHP_MINFO(dom),
 	DOM_API_VERSION, /* Extension versionnumber */
-	STANDARD_MODULE_PROPERTIES
+	PHP_MODULE_GLOBALS(dom),
+	PHP_GINIT(dom),
+	NULL,
+	NULL,
+	STANDARD_MODULE_PROPERTIES_EX
 };
 /* }}} */
 
@@ -894,7 +935,7 @@ PHP_MINIT_FUNCTION(dom)
 	DOM_REGISTER_PROP_HANDLER(&dom_document_prop_handlers, "doctype", dom_document_doctype_read, NULL);
 	DOM_REGISTER_PROP_HANDLER(&dom_document_prop_handlers, "implementation", dom_document_implementation_read, NULL);
 	DOM_REGISTER_PROP_HANDLER(&dom_document_prop_handlers, "documentElement", dom_document_document_element_read, NULL);
-	DOM_REGISTER_PROP_HANDLER(&dom_document_prop_handlers, "actualEncoding", dom_document_encoding_read, NULL);
+	DOM_REGISTER_PROP_HANDLER(&dom_document_prop_handlers, "actualEncoding", dom_document_actual_encoding_read, NULL);
 	DOM_REGISTER_PROP_HANDLER(&dom_document_prop_handlers, "encoding", dom_document_encoding_read, dom_document_encoding_write);
 	DOM_REGISTER_PROP_HANDLER(&dom_document_prop_handlers, "xmlEncoding", dom_document_encoding_read, NULL);
 	DOM_REGISTER_PROP_HANDLER(&dom_document_prop_handlers, "standalone", dom_document_standalone_read, dom_document_standalone_write);
@@ -1816,7 +1857,7 @@ static bool dom_match_qualified_name_for_tag_name_equality(const xmlChar *local,
 	return dom_match_qualified_name_according_to_spec(local_to_use, nodep);
 }
 
-xmlNode *dom_get_elements_by_tag_name_ns_raw(xmlNodePtr basep, xmlNodePtr nodep, xmlChar *ns, xmlChar *local, xmlChar *local_lower, int *cur, int index) /* {{{ */
+xmlNode *dom_get_elements_by_tag_name_ns_raw(xmlNodePtr basep, xmlNodePtr nodep, xmlChar *ns, xmlChar *local, xmlChar *local_lower, zend_long *cur, zend_long index) /* {{{ */
 {
 	/* Can happen with detached document */
 	if (UNEXPECTED(nodep == NULL)) {

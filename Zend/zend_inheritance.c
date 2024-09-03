@@ -212,6 +212,18 @@ char *zend_visibility_string(uint32_t fn_flags) /* {{{ */
 }
 /* }}} */
 
+static const char *zend_asymmetric_visibility_string(uint32_t fn_flags) /* {{{ */
+{
+	if (fn_flags & ZEND_ACC_PRIVATE_SET) {
+		return "private(set)";
+	} else if (fn_flags & ZEND_ACC_PROTECTED_SET) {
+		return "protected(set)";
+	} else {
+		ZEND_ASSERT(!(fn_flags & ZEND_ACC_PUBLIC_SET));
+		return "omitted";
+	}
+}
+
 static zend_string *resolve_class_name(zend_class_entry *scope, zend_string *name) {
 	ZEND_ASSERT(scope);
 	if (zend_string_equals_literal_ci(name, "parent") && scope->parent) {
@@ -1396,7 +1408,7 @@ static void inherit_property_hook(
 }
 
 static prop_variance prop_get_variance(zend_property_info *prop_info) {
-	bool unbacked = prop_info->flags & (ZEND_ACC_ABSTRACT|ZEND_ACC_VIRTUAL);
+	bool unbacked = prop_info->flags & ZEND_ACC_VIRTUAL;
 	if (unbacked && prop_info->hooks) {
 		if (!prop_info->hooks[ZEND_PROPERTY_HOOK_SET]) {
 			return PROP_COVARIANT;
@@ -1440,6 +1452,25 @@ static void do_inherit_property(zend_property_info *parent_info, zend_string *ke
 						ZSTR_VAL(parent_info->ce->name), ZSTR_VAL(key),
 						child_info->flags & ZEND_ACC_READONLY ? "readonly" : "non-readonly",
 						ZSTR_VAL(ce->name), ZSTR_VAL(key));
+				}
+			}
+			if (UNEXPECTED((child_info->flags & ZEND_ACC_PPP_SET_MASK))
+			 /* Get-only virtual properties have no set visibility, so any child visibility is fine. */
+			 && !(parent_info->hooks && (parent_info->flags & ZEND_ACC_VIRTUAL) && !parent_info->hooks[ZEND_PROPERTY_HOOK_SET])) {
+				uint32_t parent_set_visibility = parent_info->flags & ZEND_ACC_PPP_SET_MASK;
+				/* Adding set protection is fine if it's the same or weaker than
+				 * the parents full property visibility. */
+				if (!parent_set_visibility) {
+					parent_set_visibility = zend_visibility_to_set_visibility(parent_info->flags & ZEND_ACC_PPP_MASK);
+				}
+				uint32_t child_set_visibility = child_info->flags & ZEND_ACC_PPP_SET_MASK;
+				if (child_set_visibility > parent_set_visibility) {
+					zend_error_noreturn(
+						E_COMPILE_ERROR,
+						"Set access level of %s::$%s must be %s (as in class %s)%s",
+						ZSTR_VAL(ce->name), ZSTR_VAL(key),
+						zend_asymmetric_visibility_string(parent_info->flags), ZSTR_VAL(parent_info->ce->name),
+						!(parent_info->flags & ZEND_ACC_PPP_SET_MASK) ? "" : " or weaker");
 				}
 			}
 
@@ -1675,6 +1706,15 @@ ZEND_API void zend_verify_hooked_property(zend_class_entry *ce, zend_property_in
 		zend_error_noreturn(E_COMPILE_ERROR,
 			"Abstract property %s::$%s must specify at least one abstract hook", ZSTR_VAL(ce->name), ZSTR_VAL(prop_name));
 	}
+	if ((prop_info->flags & ZEND_ACC_VIRTUAL)
+	 && (prop_info->flags & ZEND_ACC_PPP_SET_MASK)
+	 && (!prop_info->hooks[ZEND_PROPERTY_HOOK_GET] || !prop_info->hooks[ZEND_PROPERTY_HOOK_SET])) {
+		const char *prefix = !prop_info->hooks[ZEND_PROPERTY_HOOK_GET]
+			? "Write-only" : "Read-only";
+		zend_error_noreturn(E_COMPILE_ERROR,
+			"%s virtual property %s::$%s must not specify asymmetric visibility",
+			prefix, ZSTR_VAL(ce->name), ZSTR_VAL(prop_name));
+	}
 }
 
 ZEND_API ZEND_COLD ZEND_NORETURN void zend_hooked_property_variance_error_ex(zend_string *value_param_name, zend_string *class_name, zend_string *prop_name)
@@ -1862,11 +1902,13 @@ ZEND_API void zend_do_inheritance_ex(zend_class_entry *ce, zend_class_entry *par
 		} ZEND_HASH_FOREACH_END();
 	}
 
-	ZEND_HASH_MAP_FOREACH_STR_KEY_PTR(&ce->properties_info, key, property_info) {
-		if (property_info->ce == ce && property_info->hooks) {
-			zend_verify_hooked_property(ce, property_info, key);
-		}
-	} ZEND_HASH_FOREACH_END();
+	if (ce->num_hooked_props) {
+		ZEND_HASH_MAP_FOREACH_STR_KEY_PTR(&ce->properties_info, key, property_info) {
+			if (property_info->ce == ce && property_info->hooks) {
+				zend_verify_hooked_property(ce, property_info, key);
+			}
+		} ZEND_HASH_FOREACH_END();
+	}
 
 	if (zend_hash_num_elements(&parent_ce->constants_table)) {
 		zend_class_constant *c;
