@@ -394,9 +394,7 @@ ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_openssl_password_hash, 0, 2, IS_
 	ZEND_ARG_TYPE_INFO(0, password, IS_STRING, 0)
 	ZEND_ARG_TYPE_INFO_WITH_DEFAULT_VALUE(0, options, IS_ARRAY, 0, "[]")
 ZEND_END_ARG_INFO()
-#endif
 
-#if defined(HAVE_OPENSSL_ARGON2)
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_openssl_password_verify, 0, 3, _IS_BOOL, 0)
 	ZEND_ARG_TYPE_INFO(0, algo, IS_STRING, 0)
 	ZEND_ARG_TYPE_INFO(0, password, IS_STRING, 0)
@@ -469,8 +467,6 @@ ZEND_FUNCTION(openssl_spki_export_challenge);
 ZEND_FUNCTION(openssl_get_cert_locations);
 #if defined(HAVE_OPENSSL_ARGON2)
 ZEND_FUNCTION(openssl_password_hash);
-#endif
-#if defined(HAVE_OPENSSL_ARGON2)
 ZEND_FUNCTION(openssl_password_verify);
 #endif
 
@@ -543,22 +539,8 @@ static const zend_function_entry ext_functions[] = {
 	ZEND_FE(openssl_get_cert_locations, arginfo_openssl_get_cert_locations)
 #if defined(HAVE_OPENSSL_ARGON2)
 	ZEND_FE(openssl_password_hash, arginfo_openssl_password_hash)
-#endif
-#if defined(HAVE_OPENSSL_ARGON2)
 	ZEND_FE(openssl_password_verify, arginfo_openssl_password_verify)
 #endif
-	ZEND_FE_END
-};
-
-static const zend_function_entry class_OpenSSLCertificate_methods[] = {
-	ZEND_FE_END
-};
-
-static const zend_function_entry class_OpenSSLCertificateSigningRequest_methods[] = {
-	ZEND_FE_END
-};
-
-static const zend_function_entry class_OpenSSLAsymmetricKey_methods[] = {
 	ZEND_FE_END
 };
 
@@ -790,8 +772,6 @@ static void register_openssl_symbols(int module_number)
 #if defined(HAVE_OPENSSL_ARGON2)
 
 	zend_add_parameter_attribute(zend_hash_str_find_ptr(CG(function_table), "openssl_password_hash", sizeof("openssl_password_hash") - 1), 1, ZSTR_KNOWN(ZEND_STR_SENSITIVEPARAMETER), 0);
-#endif
-#if defined(HAVE_OPENSSL_ARGON2)
 
 	zend_add_parameter_attribute(zend_hash_str_find_ptr(CG(function_table), "openssl_password_verify", sizeof("openssl_password_verify") - 1), 1, ZSTR_KNOWN(ZEND_STR_SENSITIVEPARAMETER), 0);
 #endif
@@ -801,7 +781,7 @@ static zend_class_entry *register_class_OpenSSLCertificate(void)
 {
 	zend_class_entry ce, *class_entry;
 
-	INIT_CLASS_ENTRY(ce, "OpenSSLCertificate", class_OpenSSLCertificate_methods);
+	INIT_CLASS_ENTRY(ce, "OpenSSLCertificate", NULL);
 	class_entry = zend_register_internal_class_with_flags(&ce, NULL, ZEND_ACC_FINAL|ZEND_ACC_NO_DYNAMIC_PROPERTIES|ZEND_ACC_NOT_SERIALIZABLE);
 
 	return class_entry;
@@ -811,7 +791,7 @@ static zend_class_entry *register_class_OpenSSLCertificateSigningRequest(void)
 {
 	zend_class_entry ce, *class_entry;
 
-	INIT_CLASS_ENTRY(ce, "OpenSSLCertificateSigningRequest", class_OpenSSLCertificateSigningRequest_methods);
+	INIT_CLASS_ENTRY(ce, "OpenSSLCertificateSigningRequest", NULL);
 	class_entry = zend_register_internal_class_with_flags(&ce, NULL, ZEND_ACC_FINAL|ZEND_ACC_NO_DYNAMIC_PROPERTIES|ZEND_ACC_NOT_SERIALIZABLE);
 
 	return class_entry;
@@ -821,7 +801,7 @@ static zend_class_entry *register_class_OpenSSLAsymmetricKey(void)
 {
 	zend_class_entry ce, *class_entry;
 
-	INIT_CLASS_ENTRY(ce, "OpenSSLAsymmetricKey", class_OpenSSLAsymmetricKey_methods);
+	INIT_CLASS_ENTRY(ce, "OpenSSLAsymmetricKey", NULL);
 	class_entry = zend_register_internal_class_with_flags(&ce, NULL, ZEND_ACC_FINAL|ZEND_ACC_NO_DYNAMIC_PROPERTIES|ZEND_ACC_NOT_SERIALIZABLE);
 
 	return class_entry;

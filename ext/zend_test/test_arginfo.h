@@ -117,9 +117,7 @@ ZEND_END_ARG_INFO()
 #if defined(ZEND_CHECK_STACK_LIMIT)
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_zend_test_zend_call_stack_get, 0, 0, IS_ARRAY, 1)
 ZEND_END_ARG_INFO()
-#endif
 
-#if defined(ZEND_CHECK_STACK_LIMIT)
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_zend_test_zend_call_stack_use_all, 0, 0, IS_LONG, 0)
 ZEND_END_ARG_INFO()
 #endif
@@ -281,8 +279,6 @@ static ZEND_FUNCTION(zend_test_zend_ini_parse_uquantity);
 static ZEND_FUNCTION(zend_test_zend_ini_str);
 #if defined(ZEND_CHECK_STACK_LIMIT)
 static ZEND_FUNCTION(zend_test_zend_call_stack_get);
-#endif
-#if defined(ZEND_CHECK_STACK_LIMIT)
 static ZEND_FUNCTION(zend_test_zend_call_stack_use_all);
 #endif
 static ZEND_FUNCTION(zend_test_is_string_marked_as_valid_utf8);
@@ -386,8 +382,6 @@ static const zend_function_entry ext_functions[] = {
 	ZEND_FE(zend_test_zend_ini_str, arginfo_zend_test_zend_ini_str)
 #if defined(ZEND_CHECK_STACK_LIMIT)
 	ZEND_FE(zend_test_zend_call_stack_get, arginfo_zend_test_zend_call_stack_get)
-#endif
-#if defined(ZEND_CHECK_STACK_LIMIT)
 	ZEND_FE(zend_test_zend_call_stack_use_all, arginfo_zend_test_zend_call_stack_use_all)
 #endif
 	ZEND_FE(zend_test_is_string_marked_as_valid_utf8, arginfo_zend_test_is_string_marked_as_valid_utf8)
@@ -448,10 +442,6 @@ static const zend_function_entry ext_functions[] = {
 	ZEND_FE_END
 };
 
-static const zend_function_entry class__ZendTestInterface_methods[] = {
-	ZEND_FE_END
-};
-
 static const zend_function_entry class__ZendTestClass_methods[] = {
 	ZEND_ME(_ZendTestClass, is_object, arginfo_class__ZendTestClass_is_object, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
 	ZEND_ME(_ZendTestClass, __toString, arginfo_class__ZendTestClass___toString, ZEND_ACC_PUBLIC|ZEND_ACC_DEPRECATED)
@@ -482,16 +472,8 @@ static const zend_function_entry class__ZendTestTrait_methods[] = {
 	ZEND_FE_END
 };
 
-static const zend_function_entry class_ZendTestAttribute_methods[] = {
-	ZEND_FE_END
-};
-
 static const zend_function_entry class_ZendTestAttributeWithArguments_methods[] = {
 	ZEND_ME(ZendTestAttributeWithArguments, __construct, arginfo_class_ZendTestAttributeWithArguments___construct, ZEND_ACC_PUBLIC)
-	ZEND_FE_END
-};
-
-static const zend_function_entry class_ZendTestRepeatableAttribute_methods[] = {
 	ZEND_FE_END
 };
 
@@ -516,25 +498,9 @@ static const zend_function_entry class_ZendTestChildClassWithMethodWithParameter
 	ZEND_FE_END
 };
 
-static const zend_function_entry class_ZendTestClassWithPropertyAttribute_methods[] = {
-	ZEND_FE_END
-};
-
 static const zend_function_entry class_ZendTestForbidDynamicCall_methods[] = {
 	ZEND_ME(ZendTestForbidDynamicCall, call, arginfo_class_ZendTestForbidDynamicCall_call, ZEND_ACC_PUBLIC)
 	ZEND_ME(ZendTestForbidDynamicCall, callStatic, arginfo_class_ZendTestForbidDynamicCall_callStatic, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
-	ZEND_FE_END
-};
-
-static const zend_function_entry class_ZendTestUnitEnum_methods[] = {
-	ZEND_FE_END
-};
-
-static const zend_function_entry class_ZendTestStringEnum_methods[] = {
-	ZEND_FE_END
-};
-
-static const zend_function_entry class_ZendTestIntEnum_methods[] = {
 	ZEND_FE_END
 };
 
@@ -602,7 +568,7 @@ static zend_class_entry *register_class__ZendTestInterface(void)
 {
 	zend_class_entry ce, *class_entry;
 
-	INIT_CLASS_ENTRY(ce, "_ZendTestInterface", class__ZendTestInterface_methods);
+	INIT_CLASS_ENTRY(ce, "_ZendTestInterface", NULL);
 	class_entry = zend_register_internal_interface(&ce);
 
 	zval const_DUMMY_value;
@@ -871,7 +837,7 @@ static zend_class_entry *register_class_ZendTestAttribute(void)
 {
 	zend_class_entry ce, *class_entry;
 
-	INIT_CLASS_ENTRY(ce, "ZendTestAttribute", class_ZendTestAttribute_methods);
+	INIT_CLASS_ENTRY(ce, "ZendTestAttribute", NULL);
 #if (PHP_VERSION_ID >= 80400)
 	class_entry = zend_register_internal_class_with_flags(&ce, NULL, ZEND_ACC_FINAL);
 #else
@@ -925,7 +891,7 @@ static zend_class_entry *register_class_ZendTestRepeatableAttribute(void)
 {
 	zend_class_entry ce, *class_entry;
 
-	INIT_CLASS_ENTRY(ce, "ZendTestRepeatableAttribute", class_ZendTestRepeatableAttribute_methods);
+	INIT_CLASS_ENTRY(ce, "ZendTestRepeatableAttribute", NULL);
 #if (PHP_VERSION_ID >= 80400)
 	class_entry = zend_register_internal_class_with_flags(&ce, NULL, ZEND_ACC_FINAL);
 #else
@@ -1061,7 +1027,7 @@ static zend_class_entry *register_class_ZendTestClassWithPropertyAttribute(void)
 {
 	zend_class_entry ce, *class_entry;
 
-	INIT_CLASS_ENTRY(ce, "ZendTestClassWithPropertyAttribute", class_ZendTestClassWithPropertyAttribute_methods);
+	INIT_CLASS_ENTRY(ce, "ZendTestClassWithPropertyAttribute", NULL);
 #if (PHP_VERSION_ID >= 80400)
 	class_entry = zend_register_internal_class_with_flags(&ce, NULL, 0);
 #else
@@ -1100,7 +1066,7 @@ static zend_class_entry *register_class_ZendTestForbidDynamicCall(void)
 #if (PHP_VERSION_ID >= 80100)
 static zend_class_entry *register_class_ZendTestUnitEnum(void)
 {
-	zend_class_entry *class_entry = zend_register_internal_enum("ZendTestUnitEnum", IS_UNDEF, class_ZendTestUnitEnum_methods);
+	zend_class_entry *class_entry = zend_register_internal_enum("ZendTestUnitEnum", IS_UNDEF, NULL);
 
 	zend_enum_add_case_cstr(class_entry, "Foo", NULL);
 
@@ -1113,7 +1079,7 @@ static zend_class_entry *register_class_ZendTestUnitEnum(void)
 #if (PHP_VERSION_ID >= 80100)
 static zend_class_entry *register_class_ZendTestStringEnum(void)
 {
-	zend_class_entry *class_entry = zend_register_internal_enum("ZendTestStringEnum", IS_STRING, class_ZendTestStringEnum_methods);
+	zend_class_entry *class_entry = zend_register_internal_enum("ZendTestStringEnum", IS_STRING, NULL);
 
 	zval enum_case_Foo_value;
 	zend_string *enum_case_Foo_value_str = zend_string_init("Test1", strlen("Test1"), 1);
@@ -1142,7 +1108,7 @@ static zend_class_entry *register_class_ZendTestStringEnum(void)
 #if (PHP_VERSION_ID >= 80100)
 static zend_class_entry *register_class_ZendTestIntEnum(void)
 {
-	zend_class_entry *class_entry = zend_register_internal_enum("ZendTestIntEnum", IS_LONG, class_ZendTestIntEnum_methods);
+	zend_class_entry *class_entry = zend_register_internal_enum("ZendTestIntEnum", IS_LONG, NULL);
 
 	zval enum_case_Foo_value;
 	ZVAL_LONG(&enum_case_Foo_value, 1);

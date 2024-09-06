@@ -112,9 +112,8 @@ AC_DEFUN([PHP_CANONICAL_HOST_TARGET],[
   if test -z "$host_alias" && test -n "$host"; then
     host_alias=$host
   fi
-  if test -z "$host_alias"; then
-    AC_MSG_ERROR([host_alias is not set! Make sure to run config.guess])
-  fi
+  AS_VAR_IF([host_alias],,
+    [AC_MSG_ERROR([host_alias is not set! Make sure to run config.guess])])
 ])
 
 dnl
@@ -298,33 +297,29 @@ dnl
 dnl Checks for -R, etc. switch.
 dnl
 AC_DEFUN([PHP_RUNPATH_SWITCH],[
-AC_MSG_CHECKING([if compiler supports -Wl,-rpath,])
-AC_CACHE_VAL(php_cv_cc_rpath,[
+AC_CACHE_CHECK([if compiler supports -Wl,-rpath,], [php_cv_cc_rpath], [
   SAVE_LIBS=$LIBS
   LIBS="-Wl,-rpath,/usr/$PHP_LIBDIR $LIBS"
-  AC_LINK_IFELSE([AC_LANG_PROGRAM([], [])],[php_cv_cc_rpath=yes],[php_cv_cc_rpath=no])
-  LIBS=$SAVE_LIBS])
-AC_MSG_RESULT([$php_cv_cc_rpath])
-if test $php_cv_cc_rpath = "yes"; then
-  ld_runpath_switch=-Wl,-rpath,
-else
-  AC_MSG_CHECKING([if compiler supports -R])
-  AC_CACHE_VAL(php_cv_cc_dashr,[
+  AC_LINK_IFELSE([AC_LANG_PROGRAM()],
+    [php_cv_cc_rpath=yes],
+    [php_cv_cc_rpath=no])
+  LIBS=$SAVE_LIBS
+])
+AS_VAR_IF([php_cv_cc_rpath], [yes],
+  [ld_runpath_switch=-Wl,-rpath,],
+  [AC_CACHE_CHECK([if compiler supports -R], [php_cv_cc_dashr], [
     SAVE_LIBS=$LIBS
     LIBS="-R /usr/$PHP_LIBDIR $LIBS"
-    AC_LINK_IFELSE([AC_LANG_PROGRAM([], [])],[php_cv_cc_dashr=yes],[php_cv_cc_dashr=no])
-    LIBS=$SAVE_LIBS])
-  AC_MSG_RESULT([$php_cv_cc_dashr])
-  if test $php_cv_cc_dashr = "yes"; then
-    ld_runpath_switch=-R
-  else
-    dnl Something innocuous.
-    ld_runpath_switch=-L
-  fi
-fi
-if test "$PHP_RPATH" = "no"; then
-  ld_runpath_switch=
-fi
+    AC_LINK_IFELSE([AC_LANG_PROGRAM()],
+      [php_cv_cc_dashr=yes],
+      [php_cv_cc_dashr=no])
+    LIBS=$SAVE_LIBS
+  ])
+  AS_VAR_IF([php_cv_cc_dashr], [yes],
+    [ld_runpath_switch=-R],
+    [ld_runpath_switch=-L])
+])
+AS_VAR_IF([PHP_RPATH], [no], [ld_runpath_switch=])
 ])
 
 dnl
@@ -375,25 +370,23 @@ AC_DEFUN([PHP_EVAL_LIBLINE],
   [m4_warn([syntax], [Missing 2nd argument when skipping extension check])],
   [_php_ext_shared_saved=$ext_shared; ext_shared=yes])])
   for ac_i in $1; do
-    case $ac_i in
-    -pthread[)]
-      if test "$ext_shared" = "yes"; then
-        $2="[$]$2 -pthread"
-      else
-        PHP_RUN_ONCE(EXTRA_LDFLAGS, [$ac_i], [EXTRA_LDFLAGS="$EXTRA_LDFLAGS $ac_i"])
-        PHP_RUN_ONCE(EXTRA_LDFLAGS_PROGRAM, [$ac_i],
+    AS_CASE([$ac_i],
+      [-pthread], [
+        AS_VAR_IF([ext_shared], [yes], [$2="$$2 -pthread"], [
+          PHP_RUN_ONCE([EXTRA_LDFLAGS], [$ac_i],
+            [EXTRA_LDFLAGS="$EXTRA_LDFLAGS $ac_i"])
+          PHP_RUN_ONCE([EXTRA_LDFLAGS_PROGRAM], [$ac_i],
             [EXTRA_LDFLAGS_PROGRAM="$EXTRA_LDFLAGS_PROGRAM $ac_i"])
-      fi
-    ;;
-    -l*[)]
-      ac_ii=$(echo $ac_i|cut -c 3-)
-      PHP_ADD_LIBRARY($ac_ii,1,$2)
-    ;;
-    -L*[)]
-      ac_ii=$(echo $ac_i|cut -c 3-)
-      PHP_ADD_LIBPATH($ac_ii,$2)
-    ;;
-    esac
+        ])
+      ],
+      [-l*], [
+        ac_ii=$(echo $ac_i|cut -c 3-)
+        PHP_ADD_LIBRARY([$ac_ii], [yes], [$2])
+      ],
+      [-L*], [
+        ac_ii=$(echo $ac_i|cut -c 3-)
+        PHP_ADD_LIBPATH([$ac_ii], [$2])
+      ])
   done
 m4_ifnblank([$3], [m4_ifnblank([$2], [ext_shared=$_php_ext_shared_saved])])[]dnl
 ])
@@ -467,10 +460,10 @@ AC_DEFUN([PHP_UTILIZE_RPATHS],[
     NATIVE_RPATHS="$NATIVE_RPATHS $ld_runpath_switch$i"
   done
 
-  if test "$PHP_RPATH" = "no"; then
+  AS_VAR_IF([PHP_RPATH], [no], [
     unset PHP_RPATHS
     unset NATIVE_RPATHS
-  fi
+  ])
 ])
 
 dnl
@@ -640,12 +633,10 @@ dnl PHP_SET_LIBTOOL_VARIABLE(var)
 dnl
 dnl Set libtool variable.
 dnl
-AC_DEFUN([PHP_SET_LIBTOOL_VARIABLE],[
-  if test -z "$LIBTOOL"; then
-    LIBTOOL='$(SHELL) $(top_builddir)/libtool $1'
-  else
-    LIBTOOL="$LIBTOOL $1"
-  fi
+AC_DEFUN([PHP_SET_LIBTOOL_VARIABLE], [
+AS_VAR_IF([LIBTOOL],,
+  [LIBTOOL='$(SHELL) $(top_builddir)/libtool $1'],
+  [LIBTOOL="$LIBTOOL $1"])
 ])
 
 dnl ----------------------------------------------------------------------------
@@ -759,13 +750,13 @@ AC_DEFUN([PHP_BUILD_THREAD_SAFE], [enable_zts=yes])
 dnl
 dnl PHP_REQUIRE_CXX
 dnl
-AC_DEFUN([PHP_REQUIRE_CXX],[
-  if test -z "$php_cxx_done"; then
-    AC_PROG_CXX
-    AC_PROG_CXXCPP
-    PHP_ADD_LIBRARY([stdc++])
-    php_cxx_done=yes
-  fi
+AC_DEFUN([PHP_REQUIRE_CXX], [
+AS_VAR_IF([php_cxx_done],, [
+  AC_PROG_CXX
+  AC_PROG_CXXCPP
+  PHP_ADD_LIBRARY([stdc++])
+  php_cxx_done=yes
+])
 ])
 
 dnl
@@ -839,11 +830,7 @@ AC_DEFUN([PHP_SHARED_MODULE],[
   install_modules="install-modules"
   suffix=la
 
-  case $host_alias in
-    *aix*[)]
-      additional_flags="-Wl,-G"
-      ;;
-  esac
+  AS_CASE([$host_alias], [*aix*], [additional_flags="-Wl,-G"])
 
   if test "x$5" = "xyes"; then
     PHP_ZEND_EX="$PHP_ZEND_EX \$(phplibdir)/$1.$suffix"
@@ -1307,17 +1294,14 @@ dnl
 dnl Some systems, notably Solaris, cause getcwd() or realpath to fail if a
 dnl component of the path has execute but not read permissions.
 dnl
-AC_DEFUN([PHP_BROKEN_GETCWD],[
-  AC_MSG_CHECKING([for broken getcwd])
-  os=$(uname -sr 2>/dev/null)
-  case $os in
-    SunOS*[)]
-      AC_DEFINE([HAVE_BROKEN_GETCWD], [1],
-        [Define to 1 if system has a broken 'getcwd'.])
-      AC_MSG_RESULT([yes]);;
-    *[)]
-      AC_MSG_RESULT([no]);;
-  esac
+AC_DEFUN([PHP_BROKEN_GETCWD], [
+AC_CACHE_CHECK([for broken getcwd], [php_cv_func_getcwd_broken],
+  [AS_CASE([$host_alias],
+    [*solaris*], [php_cv_func_getcwd_broken=yes],
+    [php_cv_func_getcwd_broken=no])])
+AS_VAR_IF([php_cv_func_getcwd_broken], [yes],
+  [AC_DEFINE([HAVE_BROKEN_GETCWD], [1],
+    [Define to 1 if system has a broken 'getcwd'.])])
 ])
 
 dnl
@@ -1571,22 +1555,22 @@ dnl
 dnl Determines shared library suffix SHLIB_DL_SUFFIX_NAME suffix can be: .so or
 dnl .sl
 dnl
-AC_DEFUN([PHP_SHLIB_SUFFIX_NAMES],[
- AC_REQUIRE([PHP_CANONICAL_HOST_TARGET])dnl
- PHP_SUBST_OLD([SHLIB_SUFFIX_NAME])
- PHP_SUBST_OLD([SHLIB_DL_SUFFIX_NAME])
- SHLIB_SUFFIX_NAME=so
- SHLIB_DL_SUFFIX_NAME=$SHLIB_SUFFIX_NAME
- case $host_alias in
- *hpux*[)]
-   SHLIB_SUFFIX_NAME=sl
-   SHLIB_DL_SUFFIX_NAME=sl
-   ;;
- *darwin*[)]
-   SHLIB_SUFFIX_NAME=dylib
-   SHLIB_DL_SUFFIX_NAME=so
-   ;;
- esac
+AC_DEFUN([PHP_SHLIB_SUFFIX_NAMES], [
+AC_REQUIRE([PHP_CANONICAL_HOST_TARGET])dnl
+AS_CASE([$host_alias],
+  [*hpux*], [
+    SHLIB_SUFFIX_NAME=sl
+    SHLIB_DL_SUFFIX_NAME=sl
+  ],
+  [*darwin*], [
+    SHLIB_SUFFIX_NAME=dylib
+    SHLIB_DL_SUFFIX_NAME=so
+  ], [
+    SHLIB_SUFFIX_NAME=so
+    SHLIB_DL_SUFFIX_NAME=$SHLIB_SUFFIX_NAME
+  ])
+PHP_SUBST_OLD([SHLIB_SUFFIX_NAME])
+PHP_SUBST_OLD([SHLIB_DL_SUFFIX_NAME])
 ])
 
 dnl
@@ -1638,27 +1622,23 @@ dnl
 dnl Some vendors force mawk before gawk; mawk is broken so we don't like that.
 dnl
 AC_DEFUN([PHP_PROG_AWK], [
-  AC_CHECK_PROGS([AWK], [gawk nawk awk mawk], [bork], [/usr/xpg4/bin/:$PATH])
-  case "$AWK" in
-    *mawk)
-      AC_MSG_WARN([mawk is known to have problems on some systems. You should install GNU awk])
-      ;;
-    *gawk)
-      ;;
-    bork)
-      AC_MSG_ERROR([Could not find awk; Install GNU awk])
-      ;;
-    *)
-      AC_MSG_CHECKING([if $AWK is broken])
-      if ! $AWK 'function foo() {}' >/dev/null 2>&1 ; then
-        AC_MSG_RESULT([yes])
-        AC_MSG_ERROR([You should install GNU awk])
-      else
-        AC_MSG_RESULT([no])
-      fi
-      ;;
-  esac
-  PHP_SUBST([AWK])
+AC_CHECK_PROGS([AWK], [gawk nawk awk mawk], [bork], [/usr/xpg4/bin/:$PATH])
+AS_CASE([$AWK],
+  [*mawk],
+    [AC_MSG_WARN(m4_text_wrap([
+      mawk is known to have problems on some systems. You should install GNU awk
+    ]))],
+  [*gawk], [],
+  [bork], [AC_MSG_ERROR([Could not find awk; Install GNU awk])],
+  [
+    AC_MSG_CHECKING([if $AWK is broken])
+    AS_IF([! $AWK 'function foo() {}' >/dev/null 2>&1], [
+      AC_MSG_RESULT([yes])
+      AC_MSG_ERROR([You should install GNU awk])
+    ],
+    [AC_MSG_RESULT([no])])
+  ])
+PHP_SUBST([AWK])
 ])
 
 dnl

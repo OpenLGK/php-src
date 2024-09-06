@@ -736,9 +736,7 @@ ZEND_END_ARG_INFO()
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_MASK_EX(arginfo_intltz_get_windows_id, 0, 1, MAY_BE_STRING|MAY_BE_FALSE)
 	ZEND_ARG_TYPE_INFO(0, timezoneId, IS_STRING, 0)
 ZEND_END_ARG_INFO()
-#endif
 
-#if U_ICU_VERSION_MAJOR_NUM >= 52
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_MASK_EX(arginfo_intltz_get_id_for_windows_id, 0, 1, MAY_BE_STRING|MAY_BE_FALSE)
 	ZEND_ARG_TYPE_INFO(0, timezoneId, IS_STRING, 0)
 	ZEND_ARG_TYPE_INFO_WITH_DEFAULT_VALUE(0, region, IS_STRING, 1, "null")
@@ -970,8 +968,6 @@ ZEND_FUNCTION(intltz_get_tz_data_version);
 ZEND_FUNCTION(intltz_get_unknown);
 #if U_ICU_VERSION_MAJOR_NUM >= 52
 ZEND_FUNCTION(intltz_get_windows_id);
-#endif
-#if U_ICU_VERSION_MAJOR_NUM >= 52
 ZEND_FUNCTION(intltz_get_id_for_windows_id);
 #endif
 ZEND_FUNCTION(intltz_has_same_rules);
@@ -1163,8 +1159,6 @@ static const zend_function_entry ext_functions[] = {
 	ZEND_FE(intltz_get_unknown, arginfo_intltz_get_unknown)
 #if U_ICU_VERSION_MAJOR_NUM >= 52
 	ZEND_FE(intltz_get_windows_id, arginfo_intltz_get_windows_id)
-#endif
-#if U_ICU_VERSION_MAJOR_NUM >= 52
 	ZEND_FE(intltz_get_id_for_windows_id, arginfo_intltz_get_id_for_windows_id)
 #endif
 	ZEND_FE(intltz_has_same_rules, arginfo_intltz_has_same_rules)
@@ -1180,10 +1174,6 @@ static const zend_function_entry ext_functions[] = {
 	ZEND_FE(transliterator_transliterate, arginfo_transliterator_transliterate)
 	ZEND_FE(transliterator_get_error_code, arginfo_transliterator_get_error_code)
 	ZEND_FE(transliterator_get_error_message, arginfo_transliterator_get_error_message)
-	ZEND_FE_END
-};
-
-static const zend_function_entry class_IntlException_methods[] = {
 	ZEND_FE_END
 };
 
@@ -1249,7 +1239,7 @@ static zend_class_entry *register_class_IntlException(zend_class_entry *class_en
 {
 	zend_class_entry ce, *class_entry;
 
-	INIT_CLASS_ENTRY(ce, "IntlException", class_IntlException_methods);
+	INIT_CLASS_ENTRY(ce, "IntlException", NULL);
 	class_entry = zend_register_internal_class_with_flags(&ce, class_entry_Exception, 0);
 
 	return class_entry;

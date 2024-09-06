@@ -5,6 +5,7 @@ PHP                                                                        NEWS
 - BCMath:
   . Fixed LONG_MAX in BCMath ext. (Saki Takamachi)
   . Fixed bcdiv() div by one. (Saki Takamachi)
+  . [RFC] Support object types in BCMath. (Saki Takamachi)
 
 - Core:
   . Fixed bug GH-15330 (Do not scan generator frames more than once). (Arnaud)
@@ -16,6 +17,11 @@ PHP                                                                        NEWS
     property. (ilutov)
   . Fixed bug GH-15693 (Unnecessary include in main.c bloats binary).
     (nielsdos)
+  . Fixed bug GH-15731 (AllowDynamicProperties validation should error on
+    enums). (DanielEScherzer)
+
+- Curl:
+  . The CURLOPT_DNS_USE_GLOBAL_CACHE option is now silently ignored. (Ayesh Karunaratne)
 
 - DOM:
   . Fixed bug GH-13988 (Storing DOMElement consume 4 times more memory in
@@ -25,6 +31,9 @@ PHP                                                                        NEWS
 
 - GD:
   . Added gdImageClone to bundled libgd. (David Carlier)
+
+- Hash:
+  . Fixed bug GH-15742 (php_hash_sha.h incompatible with C++). (cmb)
 
 - OpenSSL:
   . Implement GH-13514 PASSWORD_ARGON2 from OpenSSL 3.2. (Remi)
