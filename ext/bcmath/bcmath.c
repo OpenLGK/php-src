@@ -148,6 +148,15 @@ PHP_MINFO_FUNCTION(bcmath)
 }
 /* }}} */
 
+static zend_always_inline zend_result bcmath_check_scale(zend_long scale, uint32_t arg_num)
+{
+	if (UNEXPECTED(scale < 0 || scale > INT_MAX)) {
+		zend_argument_value_error(arg_num, "must be between 0 and %d", INT_MAX);
+		return FAILURE;
+	}
+	return SUCCESS;
+}
+
 static void php_long2num(bc_num *num, zend_long lval)
 {
 	*num = bc_long2num(lval);
@@ -188,8 +197,7 @@ PHP_FUNCTION(bcadd)
 
 	if (scale_param_is_null) {
 		scale = BCG(bc_precision);
-	} else if (scale_param < 0 || scale_param > INT_MAX) {
-		zend_argument_value_error(3, "must be between 0 and %d", INT_MAX);
+	} else if (bcmath_check_scale(scale_param, 3) == FAILURE) {
 		RETURN_THROWS();
 	} else {
 		scale = (int) scale_param;
@@ -238,8 +246,7 @@ PHP_FUNCTION(bcsub)
 
 	if (scale_param_is_null) {
 		scale = BCG(bc_precision);
-	} else if (scale_param < 0 || scale_param > INT_MAX) {
-		zend_argument_value_error(3, "must be between 0 and %d", INT_MAX);
+	} else if (bcmath_check_scale(scale_param, 3) == FAILURE) {
 		RETURN_THROWS();
 	} else {
 		scale = (int) scale_param;
@@ -288,8 +295,7 @@ PHP_FUNCTION(bcmul)
 
 	if (scale_param_is_null) {
 		scale = BCG(bc_precision);
-	} else if (scale_param < 0 || scale_param > INT_MAX) {
-		zend_argument_value_error(3, "must be between 0 and %d", INT_MAX);
+	} else if (bcmath_check_scale(scale_param, 3) == FAILURE) {
 		RETURN_THROWS();
 	} else {
 		scale = (int) scale_param;
@@ -338,8 +344,7 @@ PHP_FUNCTION(bcdiv)
 
 	if (scale_param_is_null) {
 		scale = BCG(bc_precision);
-	} else if (scale_param < 0 || scale_param > INT_MAX) {
-		zend_argument_value_error(3, "must be between 0 and %d", INT_MAX);
+	} else if (bcmath_check_scale(scale_param, 3) == FAILURE) {
 		RETURN_THROWS();
 	} else {
 		scale = (int) scale_param;
@@ -393,8 +398,7 @@ PHP_FUNCTION(bcmod)
 
 	if (scale_param_is_null) {
 		scale = BCG(bc_precision);
-	} else if (scale_param < 0 || scale_param > INT_MAX) {
-		zend_argument_value_error(3, "must be between 0 and %d", INT_MAX);
+	} else if (bcmath_check_scale(scale_param, 3) == FAILURE) {
 		RETURN_THROWS();
 	} else {
 		scale = (int) scale_param;
@@ -449,8 +453,7 @@ PHP_FUNCTION(bcpowmod)
 
 	if (scale_param_is_null) {
 		scale = BCG(bc_precision);
-	} else if (scale_param < 0 || scale_param > INT_MAX) {
-		zend_argument_value_error(4, "must be between 0 and %d", INT_MAX);
+	} else if (bcmath_check_scale(scale_param, 4) == FAILURE) {
 		RETURN_THROWS();
 	} else {
 		scale = (int) scale_param;
@@ -526,8 +529,7 @@ PHP_FUNCTION(bcpow)
 
 	if (scale_param_is_null) {
 		scale = BCG(bc_precision);
-	} else if (scale_param < 0 || scale_param > INT_MAX) {
-		zend_argument_value_error(3, "must be between 0 and %d", INT_MAX);
+	} else if (bcmath_check_scale(scale_param, 3) == FAILURE) {
 		RETURN_THROWS();
 	} else {
 		scale = (int) scale_param;
@@ -588,8 +590,7 @@ PHP_FUNCTION(bcsqrt)
 
 	if (scale_param_is_null) {
 		scale = BCG(bc_precision);
-	} else if (scale_param < 0 || scale_param > INT_MAX) {
-		zend_argument_value_error(2, "must be between 0 and %d", INT_MAX);
+	} else if (bcmath_check_scale(scale_param, 2) == FAILURE) {
 		RETURN_THROWS();
 	} else {
 		scale = (int) scale_param;
@@ -633,8 +634,7 @@ PHP_FUNCTION(bccomp)
 
 	if (scale_param_is_null) {
 		scale = BCG(bc_precision);
-	} else if (scale_param < 0 || scale_param > INT_MAX) {
-		zend_argument_value_error(3, "must be between 0 and %d", INT_MAX);
+	} else if (bcmath_check_scale(scale_param, 3) == FAILURE) {
 		RETURN_THROWS();
 	} else {
 		scale = (int) scale_param;
@@ -774,8 +774,7 @@ PHP_FUNCTION(bcscale)
 	old_scale = BCG(bc_precision);
 
 	if (!new_scale_is_null) {
-		if (new_scale < 0 || new_scale > INT_MAX) {
-			zend_argument_value_error(1, "must be between 0 and %d", INT_MAX);
+		if (bcmath_check_scale(new_scale, 1) == FAILURE) {
 			RETURN_THROWS();
 		}
 
@@ -1305,15 +1304,6 @@ static zend_always_inline zend_result bc_num_from_obj_or_str_or_long_with_err(
 	return SUCCESS;
 }
 
-static zend_always_inline zend_result bcmath_check_scale(zend_long scale, bool scale_is_null, uint32_t arg_num)
-{
-	if (UNEXPECTED(!scale_is_null && (scale < 0 || scale > INT_MAX))) {
-		zend_argument_value_error(arg_num, "must be between 0 and %d", INT_MAX);
-		return FAILURE;
-	}
-	return SUCCESS;
-}
-
 PHP_METHOD(BcMath_Number, __construct)
 {
 	zend_string *str = NULL;
@@ -1359,7 +1349,7 @@ static void bcmath_number_calc_method(INTERNAL_FUNCTION_PARAMETERS, uint8_t opco
 	if (bc_num_from_obj_or_str_or_long_with_err(&num, &num_full_scale, num_obj, num_str, num_lval, 1) == FAILURE) {
 		goto fail;
 	}
-	if (bcmath_check_scale(scale_lval, scale_is_null, 2) == FAILURE) {
+	if (bcmath_check_scale(scale_lval, 2) == FAILURE) {
 		goto fail;
 	}
 
@@ -1469,7 +1459,7 @@ PHP_METHOD(BcMath_Number, powmod)
 	if (bc_num_from_obj_or_str_or_long_with_err(&modulus_num, NULL, modulus_obj, modulus_str, modulus_lval, 2) == FAILURE) {
 		goto cleanup;
 	}
-	if (bcmath_check_scale(scale_lval, scale_is_null, 3) == FAILURE) {
+	if (bcmath_check_scale(scale_lval, 3) == FAILURE) {
 		goto cleanup;
 	}
 
@@ -1530,7 +1520,7 @@ PHP_METHOD(BcMath_Number, sqrt)
 		Z_PARAM_LONG_OR_NULL(scale_lval, scale_is_null);
 	ZEND_PARSE_PARAMETERS_END();
 
-	if (bcmath_check_scale(scale_lval, scale_is_null, 1) == FAILURE) {
+	if (bcmath_check_scale(scale_lval, 1) == FAILURE) {
 		RETURN_THROWS();
 	}
 
@@ -1584,7 +1574,7 @@ PHP_METHOD(BcMath_Number, compare)
 	if (bc_num_from_obj_or_str_or_long_with_err(&num, &num_full_scale, num_obj, num_str, num_lval, 1) == FAILURE) {
 		goto fail;
 	}
-	if (bcmath_check_scale(scale_lval, scale_is_null, 2) == FAILURE) {
+	if (bcmath_check_scale(scale_lval, 2) == FAILURE) {
 		goto fail;
 	}
 

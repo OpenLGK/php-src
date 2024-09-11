@@ -1289,6 +1289,16 @@ static bool zend_jit_spilling_may_cause_conflict(zend_jit_ctx *jit, int var, ir_
 //	}
 	if (jit->ssa->vars[var].var < jit->current_op_array->last_var) {
 		/* IS_CV */
+		if (jit->ctx.ir_base[val].op == IR_LOAD
+		 && jit->ctx.ir_base[jit->ctx.ir_base[val].op2].op == IR_ADD
+		 && jit->ctx.ir_base[jit->ctx.ir_base[jit->ctx.ir_base[val].op2].op1].op == IR_RLOAD
+		 && jit->ctx.ir_base[jit->ctx.ir_base[jit->ctx.ir_base[val].op2].op1].op2 == ZREG_FP
+		 && IR_IS_CONST_REF(jit->ctx.ir_base[jit->ctx.ir_base[val].op2].op2)
+		 && jit->ctx.ir_base[jit->ctx.ir_base[jit->ctx.ir_base[val].op2].op2].val.addr != (uintptr_t)EX_NUM_TO_VAR(jit->ssa->vars[var].var)
+		 && EX_VAR_TO_NUM(jit->ctx.ir_base[jit->ctx.ir_base[jit->ctx.ir_base[val].op2].op2].val.addr) < jit->current_op_array->last_var) {
+			/* binding between different CVs may cause spill conflict */
+			return 1;
+		}
 		return 0;
 	}
 	return 1;
@@ -4534,8 +4544,12 @@ static struct jit_observer_fcall_is_unobserved_data jit_observer_fcall_is_unobse
 	if (func && (func->common.fn_flags & ZEND_ACC_CLOSURE) == 0 && ZEND_MAP_PTR_IS_OFFSET(func->common.run_time_cache)) {
 		// JIT: ZEND_MAP_PTR_GET_IMM(func->common.runtime_cache)
 		run_time_cache = ir_LOAD_A(ir_ADD_OFFSET(ir_LOAD_A(jit_CG(map_ptr_base)), (uintptr_t)ZEND_MAP_PTR(func->common.run_time_cache)));
+#if !ZTS
+	} else if (func && rx == IS_UNUSED) { // happens for internal functions only
+		ZEND_ASSERT(!ZEND_USER_CODE(func->type));
+		run_time_cache = ir_LOAD_A(ir_ADD_OFFSET(ir_CONST_ADDR(func), offsetof(zend_op_array, run_time_cache__ptr)));
+#endif
 	} else {
-		ZEND_ASSERT(rx != IR_UNUSED);
 		// Closures may be duplicated and have a different runtime cache. Use the regular run_time_cache access pattern for these
 		if (func && ZEND_USER_CODE(func->type)) { // not a closure and definitely not an internal function
 			run_time_cache = ir_LOAD_A(jit_CALL(rx, run_time_cache));
@@ -5559,6 +5573,19 @@ static int zend_jit_long_math_helper(zend_jit_ctx   *jit,
 
 	ir_refs_init(res_inputs, 2);
 
+	if (Z_MODE(op1_addr) == IS_REG
+	 && Z_LOAD(op1_addr)
+	 && jit->ra[Z_SSA_VAR(op1_addr)].ref == IR_NULL) {
+		/* Force load */
+		zend_jit_use_reg(jit, op1_addr);
+	}
+	if (Z_MODE(op2_addr) == IS_REG
+	 && Z_LOAD(op2_addr)
+	 && jit->ra[Z_SSA_VAR(op2_addr)].ref == IR_NULL) {
+		/* Force load */
+		zend_jit_use_reg(jit, op2_addr);
+	}
+
 	if (op1_info & ((MAY_BE_ANY|MAY_BE_UNDEF)-MAY_BE_LONG)) {
 		if_long1 = jit_if_Z_TYPE(jit, op1_addr, IS_LONG);
 		ir_IF_TRUE(if_long1);
@@ -6084,6 +6111,10 @@ static int zend_jit_assign_op(zend_jit_ctx   *jit,
 			break;
 		default:
 			ZEND_UNREACHABLE();
+	}
+
+	if (!zend_jit_store_var_if_necessary_ex(jit, opline->op1.var, op1_def_addr, op1_def_info, op1_addr, op1_info)) {
+		return 0;
 	}
 
 	if (op1_info & MAY_BE_REF) {

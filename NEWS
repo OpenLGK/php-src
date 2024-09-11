@@ -1,6 +1,20 @@
 PHP                                                                        NEWS
 |||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
-?? ??? ????, PHP 8.4.0beta5
+?? ??? ????, PHP 8.4.0RC1
+
+- MBString:
+  . Fixed bug GH-15824 (mb_detect_encoding(): Argument $encodings contains
+    invalid encoding "UTF8"). (Yuya Hamada)
+
+- Opcache:
+  . Fixed bug GH-15657 (Segmentation fault in dasm_x86.h). (nielsdos)
+
+- SOAP:
+  . Fixed bug #73182 (PHP SOAPClient does not support stream context HTTP
+    headers in array form). (nielsdos)
+  . Fixed bug #62900 (Wrong namespace on xsd import error message). (nielsdos)
+
+12 Sep 2024, PHP 8.4.0beta5
 
 - BCMath:
   . Fixed LONG_MAX in BCMath ext. (Saki Takamachi)
@@ -19,6 +33,7 @@ PHP                                                                        NEWS
     (nielsdos)
   . Fixed bug GH-15731 (AllowDynamicProperties validation should error on
     enums). (DanielEScherzer)
+  . Fixed uninitialized lineno in constant AST of internal enums. (ilutov)
 
 - Curl:
   . The CURLOPT_DNS_USE_GLOBAL_CACHE option is now silently ignored. (Ayesh Karunaratne)
@@ -48,6 +63,13 @@ PHP                                                                        NEWS
 - Reflection:
   . Fixed bug GH-15718 (Segfault on ReflectionProperty::get{Hook,Hooks}() on
     dynamic properties). (DanielEScherzer)
+  . Fixed bug GH-15694 (ReflectionProperty::isInitialized() is incorrect for
+    hooked properties). (ilutov)
+
+- SOAP:
+  . Fixed bug #61525 (SOAP functions require at least one space after HTTP
+    header colon). (nielsdos)
+  . Implement request #47317 (SoapServer::__getLastResponse()). (nielsdos)
 
 - Standard:
   . Fixed bug GH-15552 (Signed integer overflow in ext/standard/scanf.c). (cmb)

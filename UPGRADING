@@ -431,6 +431,7 @@ PHP 8.4 UPGRADE NOTES
     - ReflectionClass::SKIP_INITIALIZATION_ON_SERIALIZE
     - ReflectionClass::SKIP_DESTRUCTOR
     RFC: https://wiki.php.net/rfc/lazy-objects
+  . ReflectionProperty::isDynamic() was introduced.
 
 - SOAP:
   . Added support for clark notation for namespaces in class map.
@@ -701,6 +702,8 @@ PHP 8.4 UPGRADE NOTES
 - PDO_PGSQL:
   . getAttribute() can now retrieve the memory usage of query results.
     PDO::PGSQL_ATTR_RESULT_MEMORY_SIZE was added for this feature.
+  . If the column is of FLOAT4OID/FLOAT8OID type, query returns it as a
+    float instead of a string.
 
 - PGSQL:
   . pg_select, the conditions arguments accepts an empty array and is optional.
@@ -842,6 +845,11 @@ PHP 8.4 UPGRADE NOTES
 - SPL:
   . Added seek() method to SplObjectStorage, now it implements
     SeekableIterator.
+
+- SOAP:
+  . Added SoapServer::__getLastResponse(). This only tracks the last response
+    if the trace option is set to true in the SoapServer constructor's $options
+    argument.
 
 - Standard:
   . Added the http_get_last_response_headers() and

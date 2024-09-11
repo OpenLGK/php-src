@@ -421,7 +421,11 @@ static void zend_enum_register_func(zend_class_entry *ce, zend_known_string_id n
     if (EG(active)) { // at run-time
 		ZEND_MAP_PTR_INIT(zif->run_time_cache, zend_arena_calloc(&CG(arena), 1, zend_internal_run_time_cache_reserved_size()));
 	} else {
-		ZEND_MAP_PTR_NEW(zif->run_time_cache);
+#if ZTS
+		ZEND_MAP_PTR_NEW_STATIC(zif->run_time_cache);
+#else
+		ZEND_MAP_PTR_INIT(zif->run_time_cache, NULL);
+#endif
 	}
 
 	if (!zend_hash_add_ptr(&ce->function_table, name, zif)) {
@@ -544,12 +548,14 @@ static zend_ast_ref *create_enum_case_ast(
 	ast->child[0]->attr = 0;
 	ZEND_ASSERT(ZSTR_IS_INTERNED(class_name));
 	ZVAL_STR(zend_ast_get_zval(ast->child[0]), class_name);
+	Z_LINENO_P(zend_ast_get_zval(ast->child[0])) = 0;
 
 	ast->child[1] = (zend_ast *) p; p += sizeof(zend_ast_zval);
 	ast->child[1]->kind = ZEND_AST_ZVAL;
 	ast->child[1]->attr = 0;
 	ZEND_ASSERT(ZSTR_IS_INTERNED(case_name));
 	ZVAL_STR(zend_ast_get_zval(ast->child[1]), case_name);
+	Z_LINENO_P(zend_ast_get_zval(ast->child[1])) = 0;
 
 	if (value) {
 		ast->child[2] = (zend_ast *) p; p += sizeof(zend_ast_zval);
@@ -557,6 +563,7 @@ static zend_ast_ref *create_enum_case_ast(
 		ast->child[2]->attr = 0;
 		ZEND_ASSERT(!Z_REFCOUNTED_P(value));
 		ZVAL_COPY_VALUE(zend_ast_get_zval(ast->child[2]), value);
+		Z_LINENO_P(zend_ast_get_zval(ast->child[2])) = 0;
 	} else {
 		ast->child[2] = NULL;
 	}

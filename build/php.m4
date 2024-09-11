@@ -31,7 +31,9 @@ dnl PHP_DEF_HAVE(what)
 dnl
 dnl Generates 'AC_DEFINE(HAVE_WHAT, 1, [ ])'.
 dnl
-AC_DEFUN([PHP_DEF_HAVE],[AC_DEFINE([HAVE_]translit($1,a-z_.-,A-Z___), 1, [ ])])
+AC_DEFUN([PHP_DEF_HAVE], [m4_warn([obsolete],
+  [The macro 'PHP_DEF_HAVE' is obsolete. Use AC_DEFINE.])
+AC_DEFINE([HAVE_]translit($1,a-z_.-,A-Z___), 1, [ ])])
 
 dnl
 dnl PHP_RUN_ONCE(namespace, variable, code)
@@ -467,21 +469,20 @@ AC_DEFUN([PHP_UTILIZE_RPATHS],[
 ])
 
 dnl
-dnl PHP_ADD_INCLUDE(path [,before])
+dnl PHP_ADD_INCLUDE(paths [,prepend])
 dnl
-dnl Add an include path. If before is 1, add in the beginning of INCLUDES.
+dnl Add blank-or-newline-separated list of include paths. If "prepend" is given,
+dnl paths are prepended to the beginning of INCLUDES.
 dnl
-AC_DEFUN([PHP_ADD_INCLUDE],[
-  if test "$1" != "/usr/include"; then
-    PHP_EXPAND_PATH($1, ai_p)
-    PHP_RUN_ONCE(INCLUDEPATH, $ai_p, [
-      if test "$2"; then
-        INCLUDES="-I$ai_p $INCLUDES"
-      else
-        INCLUDES="$INCLUDES -I$ai_p"
-      fi
-    ])
-  fi
+AC_DEFUN([PHP_ADD_INCLUDE], [
+for include_path in m4_normalize(m4_expand([$1])); do
+  AS_IF([test "$include_path" != "/usr/include"], [
+    PHP_EXPAND_PATH([$include_path], [ai_p])
+    PHP_RUN_ONCE([INCLUDEPATH], [$ai_p], [m4_ifnblank([$2],
+      [INCLUDES="-I$ai_p $INCLUDES"],
+      [INCLUDES="$INCLUDES -I$ai_p"])])
+  ])
+done
 ])
 
 dnl
@@ -745,7 +746,9 @@ dnl ----------------------------------------------------------------------------
 dnl
 dnl PHP_BUILD_THREAD_SAFE
 dnl
-AC_DEFUN([PHP_BUILD_THREAD_SAFE], [enable_zts=yes])
+AC_DEFUN([PHP_BUILD_THREAD_SAFE], [m4_warn([obsolete],
+  [The macro 'PHP_BUILD_THREAD_SAFE' is obsolete. Set 'enable_zts' manually.])
+  enable_zts=yes])
 
 dnl
 dnl PHP_REQUIRE_CXX
@@ -1137,8 +1140,8 @@ dnl PHP_DOES_PWRITE_WORK
 dnl
 dnl Internal.
 dnl
-AC_DEFUN([PHP_DOES_PWRITE_WORK],[
-  AC_RUN_IFELSE([AC_LANG_SOURCE([
+AC_DEFUN([PHP_DOES_PWRITE_WORK], [
+AC_RUN_IFELSE([AC_LANG_SOURCE([
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -1155,13 +1158,10 @@ $1
     if (pwrite(fd, "text", 4, -1) != -1 || errno != EINVAL) return 1;
     return 0;
     }
-  ])],[
-    ac_cv_pwrite=yes
-  ],[
-    ac_cv_pwrite=no
-  ],[
-    ac_cv_pwrite=no
-  ])
+  ])],
+  [php_cv_func_pwrite=yes],
+  [php_cv_func_pwrite=no],
+  [php_cv_func_pwrite=no])
 ])
 
 dnl
@@ -1169,9 +1169,9 @@ dnl PHP_DOES_PREAD_WORK
 dnl
 dnl Internal.
 dnl
-AC_DEFUN([PHP_DOES_PREAD_WORK],[
-  echo test > conftest_pread
-  AC_RUN_IFELSE([AC_LANG_SOURCE([[
+AC_DEFUN([PHP_DOES_PREAD_WORK], [
+echo test > conftest_pread
+AC_RUN_IFELSE([AC_LANG_SOURCE([[
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -1188,61 +1188,52 @@ $1
     if (pread(fd, buf, 2, -1) != -1 || errno != EINVAL) return 1;
     return 0;
     }
-  ]])],[
-    ac_cv_pread=yes
-  ],[
-    ac_cv_pread=no
-  ],[
-    ac_cv_pread=no
-  ])
+  ]])],
+  [php_cv_func_pread=yes],
+  [php_cv_func_pread=no],
+  [php_cv_func_pread=no])
 ])
 
 dnl
 dnl PHP_PWRITE_TEST
 dnl
-AC_DEFUN([PHP_PWRITE_TEST],[
-  AC_CACHE_CHECK(whether pwrite works,ac_cv_pwrite,[
-    PHP_DOES_PWRITE_WORK
-    if test "$ac_cv_pwrite" = "no"; then
-      PHP_DOES_PWRITE_WORK([ssize_t pwrite(int, void *, size_t, off64_t);])
-      if test "$ac_cv_pwrite" = "yes"; then
-        ac_cv_pwrite=64
-      fi
-    fi
+AC_DEFUN([PHP_PWRITE_TEST], [
+AC_CACHE_CHECK([whether pwrite works], [php_cv_func_pwrite], [
+  PHP_DOES_PWRITE_WORK
+  AS_VAR_IF([php_cv_func_pwrite], [no], [
+    PHP_DOES_PWRITE_WORK([ssize_t pwrite(int, void *, size_t, off64_t);])
+    AS_VAR_IF([php_cv_func_pwrite], [yes], [php_cv_func_pwrite=64])
   ])
+])
 
-  if test "$ac_cv_pwrite" != "no"; then
-    AC_DEFINE([HAVE_PWRITE], [1],
-      [Define to 1 if you have the 'pwrite' function.])
-    if test "$ac_cv_pwrite" = "64"; then
-      AC_DEFINE([PHP_PWRITE_64], [1],
-        [Define to 1 if 'pwrite' declaration with 'off64_t' is missing.])
-    fi
-  fi
+AS_VAR_IF([php_cv_func_pwrite], [no],, [
+  AC_DEFINE([HAVE_PWRITE], [1],
+    [Define to 1 if you have the 'pwrite' function.])
+  AS_VAR_IF([php_cv_func_pwrite], [64],
+    [AC_DEFINE([PHP_PWRITE_64], [1],
+      [Define to 1 if 'pwrite' declaration with 'off64_t' is missing.])])
+])
 ])
 
 dnl
 dnl PHP_PREAD_TEST
 dnl
-AC_DEFUN([PHP_PREAD_TEST],[
-  AC_CACHE_CHECK(whether pread works,ac_cv_pread,[
-    PHP_DOES_PREAD_WORK
-    if test "$ac_cv_pread" = "no"; then
-      PHP_DOES_PREAD_WORK([ssize_t pread(int, void *, size_t, off64_t);])
-      if test "$ac_cv_pread" = "yes"; then
-        ac_cv_pread=64
-      fi
-    fi
+AC_DEFUN([PHP_PREAD_TEST], [
+AC_CACHE_CHECK([whether pread works], [php_cv_func_pread], [
+  PHP_DOES_PREAD_WORK
+  AS_VAR_IF([php_cv_func_pread], [no], [
+    PHP_DOES_PREAD_WORK([ssize_t pread(int, void *, size_t, off64_t);])
+    AS_VAR_IF([php_cv_func_pread], [yes], [php_cv_func_pread=64])
   ])
+])
 
-  if test "$ac_cv_pread" != "no"; then
-    AC_DEFINE([HAVE_PREAD], [1],
-      [Define to 1 if you have the 'pread' function.])
-    if test "$ac_cv_pread" = "64"; then
-      AC_DEFINE([PHP_PREAD_64], [1],
-        [Define to 1 if 'pread' declaration with 'off64_t' is missing.])
-    fi
-  fi
+AS_VAR_IF([php_cv_func_pread], [no],, [
+  AC_DEFINE([HAVE_PREAD], [1],
+    [Define to 1 if you have the 'pread' function.])
+  AS_VAR_IF([php_cv_func_pread], [64],
+    [AC_DEFINE([PHP_PREAD_64], [1],
+      [Define to 1 if 'pread' declaration with 'off64_t' is missing.])])
+])
 ])
 
 dnl
@@ -1523,7 +1514,8 @@ dnl PHP_TEST_BUILD(function, action-if-ok, action-if-not-ok [, extra-libs [, ext
 dnl
 dnl This macro checks whether build works and given function exists.
 dnl
-AC_DEFUN([PHP_TEST_BUILD], [
+AC_DEFUN([PHP_TEST_BUILD], [m4_warn([obsolete],
+  [The macro 'PHP_TEST_BUILD' is obsolete. Use AC_* macros.])
   old_LIBS=$LIBS
   LIBS="$4 $LIBS"
   AC_LINK_IFELSE([AC_LANG_SOURCE([
@@ -2043,7 +2035,8 @@ dnl PHP_AP_EXTRACT_VERSION(/path/httpd)
 dnl
 dnl This macro is used to get a comparable version for Apache.
 dnl
-AC_DEFUN([PHP_AP_EXTRACT_VERSION],[
+AC_DEFUN([PHP_AP_EXTRACT_VERSION], [m4_warn([obsolete],
+  [The macro 'PHP_AP_EXTRACT_VERSION' is obsolete. Use 'apxs -q HTTPD_VERSION'])
 AS_IF([test -x "$1"], [
   ac_output=$($1 -v 2>&1 | grep version | $SED -e 's/Oracle-HTTP-//')
   ac_IFS=$IFS
