@@ -469,17 +469,16 @@ static ssize_t phar_stream_write(php_stream *stream, const char *buf, size_t cou
 static int phar_stream_flush(php_stream *stream) /* {{{ */
 {
 	char *error;
-	int ret;
 	phar_entry_data *data = (phar_entry_data *) stream->abstract;
 
 	if (data->internal_file->is_modified) {
 		data->internal_file->timestamp = time(0);
-		ret = phar_flush(data->phar, 0, 0, 0, &error);
+		phar_flush(data->phar, &error);
 		if (error) {
 			php_stream_wrapper_log_error(stream->wrapper, REPORT_ERRORS, "%s", error);
 			efree(error);
 		}
-		return ret;
+		return EOF;
 	} else {
 		return EOF;
 	}
@@ -955,7 +954,7 @@ static int phar_wrapper_rename(php_stream_wrapper *wrapper, const char *url_from
 	}
 
 	if (is_modified) {
-		phar_flush(phar, 0, 0, 0, &error);
+		phar_flush(phar, &error);
 		if (error) {
 			php_url_free(resource_from);
 			php_url_free(resource_to);

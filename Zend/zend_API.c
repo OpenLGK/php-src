@@ -2958,7 +2958,7 @@ ZEND_API zend_result zend_register_functions(zend_class_entry *scope, const zend
 		if (EG(active)) { // at run-time: this ought to only happen if registered with dl() or somehow temporarily at runtime
 			ZEND_MAP_PTR_INIT(internal_function->run_time_cache, zend_arena_calloc(&CG(arena), 1, zend_internal_run_time_cache_reserved_size()));
 		} else {
-#if ZTS
+#ifdef ZTS
 			ZEND_MAP_PTR_NEW_STATIC(internal_function->run_time_cache);
 #else
 			ZEND_MAP_PTR_INIT(internal_function->run_time_cache, NULL);
@@ -3571,7 +3571,7 @@ ZEND_API zend_result zend_register_class_alias_ex(const char *name, size_t name_
 		zend_str_tolower_copy(ZSTR_VAL(lcname), name, name_len);
 	}
 
-	zend_assert_valid_class_name(lcname);
+	zend_assert_valid_class_name(lcname, "a class alias");
 
 	lcname = zend_new_interned_string(lcname);
 

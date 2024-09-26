@@ -434,6 +434,61 @@ PHP_FUNCTION(bcmod)
 }
 /* }}} */
 
+PHP_FUNCTION(bcdivmod)
+{
+	zend_string *left, *right;
+	zend_long scale_param;
+	bool scale_param_is_null = 1;
+	bc_num first = NULL, second = NULL, quot = NULL, rem = NULL;
+	int scale = BCG(bc_precision);
+
+	ZEND_PARSE_PARAMETERS_START(2, 3)
+		Z_PARAM_STR(left)
+		Z_PARAM_STR(right)
+		Z_PARAM_OPTIONAL
+		Z_PARAM_LONG_OR_NULL(scale_param, scale_param_is_null)
+	ZEND_PARSE_PARAMETERS_END();
+
+	if (scale_param_is_null) {
+		scale = BCG(bc_precision);
+	} else if (bcmath_check_scale(scale_param, 3) == FAILURE) {
+		RETURN_THROWS();
+	} else {
+		scale = (int) scale_param;
+	}
+
+	BC_ARENA_SETUP;
+
+	if (php_str2num(&first, left) == FAILURE) {
+		zend_argument_value_error(1, "is not well-formed");
+		goto cleanup;
+	}
+
+	if (php_str2num(&second, right) == FAILURE) {
+		zend_argument_value_error(2, "is not well-formed");
+		goto cleanup;
+	}
+
+	if (!bc_divmod(first, second, &quot, &rem, scale)) {
+		zend_throw_exception_ex(zend_ce_division_by_zero_error, 0, "Division by zero");
+		goto cleanup;
+	}
+
+	zval z_quot, z_rem;
+	ZVAL_STR(&z_quot, bc_num2str_ex(quot, 0));
+	ZVAL_STR(&z_rem, bc_num2str_ex(rem, scale));
+
+	RETVAL_ARR(zend_new_pair(&z_quot, &z_rem));
+
+	cleanup: {
+		bc_free_num(&first);
+		bc_free_num(&second);
+		bc_free_num(&quot);
+		bc_free_num(&rem);
+		BC_ARENA_TEARDOWN;
+	};
+}
+
 /* {{{ Returns the value of an arbitrary precision number raised to the power of another reduced by a modulus */
 PHP_FUNCTION(bcpowmod)
 {
@@ -802,6 +857,7 @@ static int bcmath_number_compare(zval *op1, zval *op2);
 #else
 #  define CHECK_RET_SCALE_OVERFLOW(scale, origin_scale) (scale > INT_MAX || scale < origin_scale)
 #endif
+#define CHECK_SCALE_OVERFLOW(scale) (scale > INT_MAX)
 
 static zend_always_inline bcmath_number_obj_t *get_bcmath_number_from_obj(const zend_object *obj)
 {
@@ -1119,10 +1175,10 @@ static zend_result bcmath_number_parse_num(zval *zv, zend_object **obj, zend_str
 
 			case IS_NULL:
 				*lval = 0;
-				return SUCCESS;
+				return FAILURE;
 
 			default:
-				return zend_parse_arg_str_or_long_slow(zv, str, lval, 1 /* dummy */) ? SUCCESS : FAILURE;
+				return zend_parse_arg_long_slow(zv, lval, 1 /* dummy */) ? SUCCESS : FAILURE;
 		}
 	}
 }
@@ -1178,9 +1234,17 @@ static zend_result bcmath_number_do_operation(uint8_t opcode, zval *ret_val, zva
 	bc_num n2 = NULL;
 	size_t n1_full_scale;
 	size_t n2_full_scale;
-	if (UNEXPECTED(bc_num_from_obj_or_str_or_long(&n1, &n1_full_scale, obj1, str1, lval1) == FAILURE ||
-		bc_num_from_obj_or_str_or_long(&n2, &n2_full_scale, obj2, str2, lval2) == FAILURE)) {
-		zend_value_error("Number is not well-formed");
+	if (UNEXPECTED(bc_num_from_obj_or_str_or_long(&n1, &n1_full_scale, obj1, str1, lval1) == FAILURE)) {
+		zend_value_error("Left string operand cannot be converted to BcMath\\Number");
+		goto fail;
+	}
+	if (UNEXPECTED(bc_num_from_obj_or_str_or_long(&n2, &n2_full_scale, obj2, str2, lval2) == FAILURE)) {
+		zend_value_error("Right string operand cannot be converted to BcMath\\Number");
+		goto fail;
+	}
+
+	if (UNEXPECTED(CHECK_SCALE_OVERFLOW(n1_full_scale) || CHECK_SCALE_OVERFLOW(n2_full_scale))) {
+		zend_value_error("scale must be between 0 and %d", INT_MAX);
 		goto fail;
 	}
 
@@ -1256,21 +1320,31 @@ static int bcmath_number_compare(zval *op1, zval *op2)
 	bc_num n1 = NULL;
 	bc_num n2 = NULL;
 
+	int ret = ZEND_UNCOMPARABLE;
+
 	if (UNEXPECTED(bcmath_number_parse_num(op1, &obj1, &str1, &lval1) == FAILURE)) {
-		goto fallback;
+		goto failure;
 	}
 
 	if (UNEXPECTED(bcmath_number_parse_num(op2, &obj2, &str2, &lval2) == FAILURE)) {
-		goto fallback;
+		goto failure;
 	}
 
-	if (UNEXPECTED(bc_num_from_obj_or_str_or_long(&n1, NULL, obj1, str1, lval1) == FAILURE ||
-		bc_num_from_obj_or_str_or_long(&n2, NULL, obj2, str2, lval2) == FAILURE)) {
-		goto fallback;
+	size_t n1_full_scale;
+	size_t n2_full_scale;
+	if (UNEXPECTED(bc_num_from_obj_or_str_or_long(&n1, &n1_full_scale, obj1, str1, lval1) == FAILURE ||
+		bc_num_from_obj_or_str_or_long(&n2, &n2_full_scale, obj2, str2, lval2) == FAILURE)) {
+		goto failure;
 	}
 
-	bcmath_compare_result ret = bc_compare(n1, n2, MAX(n1->n_scale, n2->n_scale));
+	if (UNEXPECTED(CHECK_SCALE_OVERFLOW(n1_full_scale) || CHECK_SCALE_OVERFLOW(n2_full_scale))) {
+		zend_value_error("scale must be between 0 and %d", INT_MAX);
+		goto failure;
+	}
 
+	ret = bc_compare(n1, n2, MAX(n1->n_scale, n2->n_scale));
+
+failure:
 	if (Z_TYPE_P(op1) != IS_OBJECT) {
 		bc_free_num(&n1);
 	}
@@ -1278,10 +1352,7 @@ static int bcmath_number_compare(zval *op1, zval *op2)
 		bc_free_num(&n2);
 	}
 
-	return (int) ret;
-
-fallback:
-	return zend_std_compare_objects(op1, op2);
+	return ret;
 }
 
 #define BCMATH_PARAM_NUMBER_OR_STR_OR_LONG(dest_obj, ce, dest_str, dest_long) \
@@ -1297,9 +1368,17 @@ fallback:
 static zend_always_inline zend_result bc_num_from_obj_or_str_or_long_with_err(
 	bc_num *num, size_t *scale, zend_object *obj, zend_string *str, zend_long lval, uint32_t arg_num)
 {
-	if (UNEXPECTED(bc_num_from_obj_or_str_or_long(num, scale, obj, str, lval) == FAILURE)) {
+	size_t full_scale = 0;
+	if (UNEXPECTED(bc_num_from_obj_or_str_or_long(num, &full_scale, obj, str, lval) == FAILURE)) {
 		zend_argument_value_error(arg_num, "is not well-formed");
 		return FAILURE;
+	}
+	if (UNEXPECTED(CHECK_SCALE_OVERFLOW(full_scale))) {
+		zend_argument_value_error(arg_num, "must be between 0 and %d", INT_MAX);
+		return FAILURE;
+	}
+	if (scale != NULL) {
+		*scale = full_scale;
 	}
 	return SUCCESS;
 }
@@ -1320,7 +1399,7 @@ PHP_METHOD(BcMath_Number, __construct)
 	}
 
 	bc_num num = NULL;
-	size_t scale;
+	size_t scale = 0;
 	if (bc_num_from_obj_or_str_or_long_with_err(&num, &scale, NULL, str, lval, 1) == FAILURE) {
 		bc_free_num(&num);
 		RETURN_THROWS();
@@ -1345,7 +1424,7 @@ static void bcmath_number_calc_method(INTERNAL_FUNCTION_PARAMETERS, uint8_t opco
 	ZEND_PARSE_PARAMETERS_END();
 
 	bc_num num = NULL;
-	size_t num_full_scale;
+	size_t num_full_scale = 0;
 	if (bc_num_from_obj_or_str_or_long_with_err(&num, &num_full_scale, num_obj, num_str, num_lval, 1) == FAILURE) {
 		goto fail;
 	}
@@ -1429,6 +1508,65 @@ PHP_METHOD(BcMath_Number, mod)
 PHP_METHOD(BcMath_Number, pow)
 {
 	bcmath_number_calc_method(INTERNAL_FUNCTION_PARAM_PASSTHRU, ZEND_POW);
+}
+
+PHP_METHOD(BcMath_Number, divmod)
+{
+	zend_object *num_obj = NULL;
+	zend_string *num_str = NULL;
+	zend_long num_lval = 0;
+	zend_long scale_lval = 0;
+	bool scale_is_null = true;
+
+	ZEND_PARSE_PARAMETERS_START(1, 2)
+		BCMATH_PARAM_NUMBER_OR_STR_OR_LONG(num_obj, bcmath_number_ce, num_str, num_lval);
+		Z_PARAM_OPTIONAL
+		Z_PARAM_LONG_OR_NULL(scale_lval, scale_is_null);
+	ZEND_PARSE_PARAMETERS_END();
+
+	bc_num num = NULL;
+	size_t num_full_scale;
+	if (bc_num_from_obj_or_str_or_long_with_err(&num, &num_full_scale, num_obj, num_str, num_lval, 1) == FAILURE) {
+		goto fail;
+	}
+	if (bcmath_check_scale(scale_lval, 2) == FAILURE) {
+		goto fail;
+	}
+
+	bc_num quot = NULL;
+	bc_num rem = NULL;
+	size_t scale = scale_lval;
+	bcmath_number_obj_t *intern = get_bcmath_number_from_zval(ZEND_THIS);
+
+	if (scale_is_null) {
+		scale = MAX(intern->scale, num_full_scale);
+	}
+
+	if (!bc_divmod(intern->num, num, &quot, &rem, scale)) {
+		zend_throw_exception_ex(zend_ce_division_by_zero_error, 0, "Division by zero");
+		goto fail;
+	}
+	bc_rm_trailing_zeros(quot);
+	bc_rm_trailing_zeros(rem);
+
+	if (num_obj == NULL) {
+		bc_free_num(&num);
+	}
+
+	bcmath_number_obj_t *quot_intern = bcmath_number_new_obj(quot, 0);
+	bcmath_number_obj_t *rem_intern = bcmath_number_new_obj(rem, scale);
+
+	zval z_quot, z_rem;
+	ZVAL_OBJ(&z_quot, &quot_intern->std);
+	ZVAL_OBJ(&z_rem, &rem_intern->std);
+
+	RETURN_ARR(zend_new_pair(&z_quot, &z_rem));
+
+fail:
+	if (num_obj == NULL) {
+		bc_free_num(&num);
+	}
+	RETURN_THROWS();
 }
 
 PHP_METHOD(BcMath_Number, powmod)
@@ -1570,7 +1708,7 @@ PHP_METHOD(BcMath_Number, compare)
 	ZEND_PARSE_PARAMETERS_END();
 
 	bc_num num = NULL;
-	size_t num_full_scale;
+	size_t num_full_scale = 0;
 	if (bc_num_from_obj_or_str_or_long_with_err(&num, &num_full_scale, num_obj, num_str, num_lval, 1) == FAILURE) {
 		goto fail;
 	}
@@ -1704,8 +1842,8 @@ PHP_METHOD(BcMath_Number, __unserialize)
 	}
 
 	bc_num num = NULL;
-	size_t scale;
-	if (php_str2num_ex(&num, Z_STR_P(zv), &scale) == FAILURE) {
+	size_t scale = 0;
+	if (php_str2num_ex(&num, Z_STR_P(zv), &scale) == FAILURE || CHECK_SCALE_OVERFLOW(scale)) {
 		bc_free_num(&num);
 		goto fail;
 	}

@@ -470,6 +470,8 @@ class ReflectionProperty implements Reflector
     public const int IS_PROTECTED_SET = UNKNOWN;
     /** @cvalue ZEND_ACC_PRIVATE_SET */
     public const int IS_PRIVATE_SET = UNKNOWN;
+    /** @cvalue ZEND_ACC_FINAL */
+    public const int IS_FINAL = UNKNOWN;
 
     public string $name;
     public string $class;
@@ -557,10 +559,16 @@ class ReflectionProperty implements Reflector
 
     public function getAttributes(?string $name = null, int $flags = 0): array {}
 
+    public function hasHooks(): bool {}
+
     /** @return array<string, ReflectionMethod> */
     public function getHooks(): array {}
 
+    public function hasHook(PropertyHookType $type): bool {}
+
     public function getHook(PropertyHookType $type): ?ReflectionMethod {}
+
+    public function isFinal(): bool {}
 }
 
 /** @not-serializable */

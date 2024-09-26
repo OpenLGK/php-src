@@ -16,7 +16,7 @@
    +----------------------------------------------------------------------+
 */
 
-/* Lazy objects are standard zend_object whose initialization is defered until
+/* Lazy objects are standard zend_object whose initialization is deferred until
  * one of their properties backing store is accessed for the first time.
  *
  * This is implemented by using the same fallback mechanism as __get and __set
@@ -303,7 +303,7 @@ ZEND_API zend_object *zend_object_make_lazy(zend_object *obj,
 	}
 
 	/* Objects become non-lazy if all properties are made non-lazy before
-	 * initialization is triggerd. If the object has no properties to begin
+	 * initialization is triggered. If the object has no properties to begin
 	 * with, this happens immediately. */
 	if (UNEXPECTED(!lazy_properties_count)) {
 		return obj;
@@ -624,8 +624,10 @@ ZEND_API HashTable *zend_lazy_object_get_properties(zend_object *object)
 
 	zend_object *tmp = zend_lazy_object_init(object);
 	if (UNEXPECTED(!tmp)) {
-		ZEND_ASSERT(!object->properties || object->properties == &zend_empty_array);
-		return object->properties = (zend_array*) &zend_empty_array;
+		if (object->properties) {
+			return object->properties;
+		}
+		return object->properties = zend_new_array(0);
 	}
 
 	object = tmp;
@@ -733,4 +735,22 @@ HashTable *zend_lazy_object_get_gc(zend_object *zobj, zval **table, int *n)
 
 	zend_get_gc_buffer_use(gc_buffer, table, n);
 	return NULL;
+}
+
+zend_property_info *zend_lazy_object_get_property_info_for_slot(zend_object *obj, zval *slot)
+{
+	ZEND_ASSERT(zend_object_is_lazy_proxy(obj));
+
+	zend_property_info **table = obj->ce->properties_info_table;
+	intptr_t prop_num = slot - obj->properties_table;
+	if (prop_num >= 0 && prop_num < obj->ce->default_properties_count) {
+		return table[prop_num];
+	}
+
+	if (!zend_lazy_object_initialized(obj)) {
+		return NULL;
+	}
+
+	obj = zend_lazy_object_get_instance(obj);
+	return zend_get_property_info_for_slot(obj, slot);
 }

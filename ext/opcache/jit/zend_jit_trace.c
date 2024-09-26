@@ -3295,9 +3295,7 @@ static zend_jit_reg_var* zend_jit_trace_allocate_registers(zend_jit_trace_rec *t
 							RA_REG_FLAGS(def) |= ZREG_LOAD;
 						}
 					}
-				} else if (RA_HAS_REG(use)
-						&& (!ssa->vars[def].no_val
-				)) {
+				} else if (RA_HAS_REG(use)) {
 					if (ssa->vars[use].use_chain >= 0) {
 						RA_REG_FLAGS(use) |= ZREG_STORE; // TODO: ext/opcache/tests/jit/reg_alloc_00[67].phpt ???
 					} else {
@@ -4206,7 +4204,6 @@ static const void *zend_jit_trace(zend_jit_trace_rec *trace_buffer, uint32_t par
 			 && (trace_buffer->stop == ZEND_JIT_TRACE_STOP_LOOP
 			  || trace_buffer->stop == ZEND_JIT_TRACE_STOP_RECURSIVE_CALL
 			  || (trace_buffer->stop == ZEND_JIT_TRACE_STOP_RECURSIVE_RET
-			   && (opline-1)->result_type == IS_VAR
 			   && EX_VAR_TO_NUM((opline-1)->result.var) == i))
 			 && (ssa->vars[i].use_chain != -1
 			  || (ssa->vars[i].phi_use_chain
@@ -7656,6 +7653,24 @@ static void zend_jit_blacklist_root_trace(const zend_op *opline, size_t offset)
 		SHM_PROTECT();
 	}
 
+	zend_shared_alloc_unlock();
+}
+
+ZEND_EXT_API void zend_jit_blacklist_function(zend_op_array *op_array) {
+	zend_jit_op_array_trace_extension *jit_extension = (zend_jit_op_array_trace_extension *)ZEND_FUNC_INFO(op_array);
+	if (!jit_extension || !(jit_extension->func_info.flags & ZEND_FUNC_JIT_ON_HOT_TRACE)) {
+		return;
+	}
+
+	zend_shared_alloc_lock();
+	SHM_UNPROTECT();
+	zend_jit_unprotect();
+
+	zend_jit_stop_persistent_op_array(op_array);
+	jit_extension->func_info.flags &= ~ZEND_FUNC_JIT_ON_HOT_TRACE;
+
+	zend_jit_protect();
+	SHM_PROTECT();
 	zend_shared_alloc_unlock();
 }
 

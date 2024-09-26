@@ -50,7 +50,7 @@ var PHP_MAKEFILE_FRAGMENTS = PHP_SRC_DIR + "\\Makefile.fragments.w32";
 
 /* Care also about NTDDI_VERSION and _WIN32_WINNT in config.w32.h.in
    and manifest. */
-var WINVER = "0x0601"; /* 7/2008r2 */
+var WINVER = "0x0602"; /* 8/2012 */
 
 // There's a minimum requirement for bison.
 var MINBISON = "3.0.0";
@@ -95,10 +95,10 @@ if (typeof(CWD) == "undefined") {
 if (!MODE_PHPIZE) {
 	/* defaults; we pick up the precise versions from configure.ac */
 	var PHP_VERSION = 8;
-	var PHP_MINOR_VERSION = 4;
+	var PHP_MINOR_VERSION = 5;
 	var PHP_RELEASE_VERSION = 0;
 	var PHP_EXTRA_VERSION = "";
-	var PHP_VERSION_STRING = "8.4.0";
+	var PHP_VERSION_STRING = "8.5.0";
 }
 
 /* Get version numbers and DEFINE as a string */
