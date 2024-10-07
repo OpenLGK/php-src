@@ -484,7 +484,7 @@ static void _class_string(smart_str *str, zend_class_entry *ce, zval *obj, const
 
 		count = 0;
 		if (properties && zend_hash_num_elements(properties)) {
-			ZEND_HASH_MAP_FOREACH_STR_KEY(properties, prop_name) {
+			ZEND_HASH_FOREACH_STR_KEY(properties, prop_name) {
 				if (prop_name && ZSTR_LEN(prop_name) && ZSTR_VAL(prop_name)[0]) { /* skip all private and protected properties */
 					if (!zend_hash_exists(&ce->properties_info, prop_name)) {
 						count++;
@@ -1594,6 +1594,9 @@ ZEND_METHOD(Reflection, getModifierNames)
 	}
 	if (modifiers & ZEND_ACC_FINAL) {
 		add_next_index_stringl(return_value, "final", sizeof("final")-1);
+	}
+	if (modifiers & ZEND_ACC_VIRTUAL) {
+		add_next_index_stringl(return_value, "virtual", sizeof("virtual")-1);
 	}
 
 	/* These are mutually exclusive */
@@ -3584,6 +3587,10 @@ ZEND_METHOD(ReflectionFunctionAbstract, inNamespace)
 
 	GET_REFLECTION_OBJECT_PTR(fptr);
 
+	if ((fptr->common.fn_flags & (ZEND_ACC_CLOSURE | ZEND_ACC_FAKE_CLOSURE)) == ZEND_ACC_CLOSURE) {
+		RETURN_FALSE;
+	}
+
 	zend_string *name = fptr->common.function_name;
 	const char *backslash = zend_memrchr(ZSTR_VAL(name), '\\', ZSTR_LEN(name));
 	RETURN_BOOL(backslash);
@@ -3601,6 +3608,10 @@ ZEND_METHOD(ReflectionFunctionAbstract, getNamespaceName)
 	}
 
 	GET_REFLECTION_OBJECT_PTR(fptr);
+
+	if ((fptr->common.fn_flags & (ZEND_ACC_CLOSURE | ZEND_ACC_FAKE_CLOSURE)) == ZEND_ACC_CLOSURE) {
+		RETURN_EMPTY_STRING();
+	}
 
 	zend_string *name = fptr->common.function_name;
 	const char *backslash = zend_memrchr(ZSTR_VAL(name), '\\', ZSTR_LEN(name));
@@ -4652,7 +4663,7 @@ ZEND_METHOD(ReflectionClass, hasProperty)
 		RETURN_TRUE;
 	} else {
 		if (Z_TYPE(intern->obj) != IS_UNDEF) {
-			if (Z_OBJ_HANDLER(intern->obj, has_property)(Z_OBJ(intern->obj), name, 2, NULL)) {
+			if (Z_OBJ_HANDLER(intern->obj, has_property)(Z_OBJ(intern->obj), name, ZEND_PROPERTY_EXISTS, NULL)) {
 				RETURN_TRUE;
 			}
 		}
@@ -6174,7 +6185,7 @@ static zend_result reflection_property_check_lazy_compatible(reflection_object *
 	return SUCCESS;
 }
 
-/* {{{ Set property value withtout triggering initializer while skipping hooks if any */
+/* {{{ Set property value without triggering initializer while skipping hooks if any */
 ZEND_METHOD(ReflectionProperty, setRawValueWithoutLazyInitialization)
 {
 	reflection_object *intern;
