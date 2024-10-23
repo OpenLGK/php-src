@@ -42,7 +42,7 @@ static zend_never_inline zend_op_array* ZEND_FASTCALL zend_jit_init_func_run_tim
 {
 	void **run_time_cache;
 
-	if (!RUN_TIME_CACHE(op_array)) {
+	if (op_array->type == ZEND_USER_FUNCTION && !RUN_TIME_CACHE(op_array)) {
 		run_time_cache = zend_arena_alloc(&CG(arena), op_array->cache_size);
 		memset(run_time_cache, 0, op_array->cache_size);
 		ZEND_MAP_PTR_SET(op_array->run_time_cache, run_time_cache);
@@ -1917,6 +1917,12 @@ static bool ZEND_FASTCALL zend_jit_verify_arg_slow(zval *arg, zend_arg_info *arg
 
 static void ZEND_FASTCALL zend_jit_verify_return_slow(zval *arg, const zend_op_array *op_array, zend_arg_info *arg_info, void **cache_slot)
 {
+    if (Z_TYPE_P(arg) == IS_NULL) {
+		ZEND_ASSERT(ZEND_TYPE_IS_SET(arg_info->type));
+		if (EXPECTED(ZEND_TYPE_CONTAINS_CODE(arg_info->type, IS_NULL))) {
+			return;
+		}
+	}
 	if (UNEXPECTED(!zend_check_user_type_slow(
 			&arg_info->type, arg, /* ref */ NULL, cache_slot, /* is_return_type */ true))) {
 		zend_verify_return_error((zend_function*)op_array, arg);

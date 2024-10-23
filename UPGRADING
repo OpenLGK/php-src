@@ -60,6 +60,11 @@ PHP 8.5 UPGRADE NOTES
 5. Changed Functions
 ========================================
 
+- Zlib:
+  . The "use_include_path" argument for the 
+    gzfile, gzopen and readgzfile functions had been changed
+    from int to boolean.
+
 - PDO_PGSQL:
   . PDO::pgsqlCopyFromArray also supports inputs as Iterable.
   . Pdo\Pgsql::setAttribute and Pdo\Pgsql::prepare supports
@@ -72,6 +77,11 @@ PHP 8.5 UPGRADE NOTES
 ========================================
 6. New Functions
 ========================================
+
+- Curl:
+  . curl_multi_get_handles() allows retrieving all CurlHandles current
+    attached to a CurlMultiHandle. This includes both handles added using
+    curl_multi_add_handle() and handles accepted by CURLMOPT_PUSHFUNCTION.
 
 - PGSQL:
   . pg_close_stmt offers an alternative way to close a prepared
@@ -105,6 +115,11 @@ PHP 8.5 UPGRADE NOTES
 * The configuration variables PHP_VERSION, PHP_MINOR_VERSION, and
   PHP_RELEASE_VERSION are now always numbers.  Previously, they have been
   strings for buildconf builds.
+
+* FFI:
+  . It is no longer necessary to specify the library when using FFI::cdef()
+    and FFI::load(). However, this convenience feature should not be used in
+    production.
 
 ========================================
 13. Other Changes

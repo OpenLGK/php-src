@@ -740,11 +740,14 @@ zend_result dom_node_text_content_write(dom_object *obj, zval *newval)
 
 /* }}} */
 
-/* Returns true if the node was changed, false otherwise. */
-static bool dom_set_document_ref_obj_single(xmlNodePtr node, xmlDocPtr doc, php_libxml_ref_obj *document)
+/* Returns true if the node had the same document reference, false otherwise. */
+static bool dom_set_document_ref_obj_single(xmlNodePtr node, php_libxml_ref_obj *document)
 {
 	dom_object *childobj = php_dom_object_get_data(node);
-	if (childobj && !childobj->document) {
+	if (!childobj) {
+		return true;
+	}
+	if (!childobj->document) {
 		childobj->document = document;
 		document->refcount++;
 		return true;
@@ -752,24 +755,46 @@ static bool dom_set_document_ref_obj_single(xmlNodePtr node, xmlDocPtr doc, php_
 	return false;
 }
 
-static void dom_set_document_pointers(xmlNodePtr node, xmlDocPtr doc, php_libxml_ref_obj *document)
+void dom_set_document_ref_pointers_attr(xmlAttrPtr attr, php_libxml_ref_obj *document)
 {
-	/* Applies the document to the entire subtree. */
-	xmlSetTreeDoc(node, doc);
+	ZEND_ASSERT(document != NULL);
 
-	if (!dom_set_document_ref_obj_single(node, doc, document)) {
+	dom_set_document_ref_obj_single((xmlNodePtr) attr, document);
+	for (xmlNodePtr attr_child = attr->children; attr_child; attr_child = attr_child->next) {
+		dom_set_document_ref_obj_single(attr_child, document);
+	}
+}
+
+static bool dom_set_document_ref_pointers_node(xmlNodePtr node, php_libxml_ref_obj *document)
+{
+	ZEND_ASSERT(document != NULL);
+
+	if (!dom_set_document_ref_obj_single(node, document)) {
+		return false;
+	}
+
+	if (node->type == XML_ELEMENT_NODE) {
+		for (xmlAttrPtr attr = node->properties; attr; attr = attr->next) {
+			dom_set_document_ref_pointers_attr(attr, document);
+		}
+	}
+
+	return true;
+}
+
+void dom_set_document_ref_pointers(xmlNodePtr node, php_libxml_ref_obj *document)
+{
+	if (!document) {
+		return;
+	}
+
+	if (!dom_set_document_ref_pointers_node(node, document)) {
 		return;
 	}
 
 	xmlNodePtr base = node;
 	node = node->children;
-	while (node != NULL) {
-		ZEND_ASSERT(node != base);
-
-		if (!dom_set_document_ref_obj_single(node, doc, document)) {
-			break;
-		}
-
+	while (node != NULL && dom_set_document_ref_pointers_node(node, document)) {
 		node = php_dom_next_in_tree_order(node, base);
 	}
 }
@@ -810,7 +835,7 @@ static xmlNodePtr dom_insert_fragment(xmlNodePtr nodep, xmlNodePtr prevsib, xmlN
 }
 /* }}} */
 
-static bool dom_node_check_legacy_insertion_validity(xmlNodePtr parentp, xmlNodePtr child, bool stricterror)
+static bool dom_node_check_legacy_insertion_validity(xmlNodePtr parentp, xmlNodePtr child, bool stricterror, bool warn_empty_fragment)
 {
 	if (dom_node_is_read_only(parentp) == SUCCESS ||
 		(child->parent != NULL && dom_node_is_read_only(child->parent) == SUCCESS)) {
@@ -828,7 +853,7 @@ static bool dom_node_check_legacy_insertion_validity(xmlNodePtr parentp, xmlNode
 		return false;
 	}
 
-	if (child->type == XML_DOCUMENT_FRAG_NODE && child->children == NULL) {
+	if (warn_empty_fragment && child->type == XML_DOCUMENT_FRAG_NODE && child->children == NULL) {
 		/* TODO Drop Warning? */
 		php_error_docref(NULL, E_WARNING, "Document Fragment is empty");
 		return false;
@@ -836,6 +861,17 @@ static bool dom_node_check_legacy_insertion_validity(xmlNodePtr parentp, xmlNode
 
 	/* In old DOM only text nodes and entity nodes can be added as children to attributes. */
 	if (parentp->type == XML_ATTRIBUTE_NODE && child->type != XML_TEXT_NODE && child->type != XML_ENTITY_REF_NODE) {
+		php_dom_throw_error(HIERARCHY_REQUEST_ERR, stricterror);
+		return false;
+	}
+	/* Attributes must be in elements. */
+	if (child->type == XML_ATTRIBUTE_NODE && parentp->type != XML_ELEMENT_NODE) {
+		php_dom_throw_error(HIERARCHY_REQUEST_ERR, stricterror);
+		return false;
+	}
+
+	/* Documents can never be a child. */
+	if (child->type == XML_DOCUMENT_NODE || child->type == XML_HTML_DOCUMENT_NODE) {
 		php_dom_throw_error(HIERARCHY_REQUEST_ERR, stricterror);
 		return false;
 	}
@@ -855,12 +891,12 @@ static void dom_node_insert_before_legacy(zval *return_value, zval *ref, dom_obj
 	xmlNodePtr new_child = NULL;
 	bool stricterror = dom_get_strict_error(intern->document);
 
-	if (!dom_node_check_legacy_insertion_validity(parentp, child, stricterror)) {
+	if (!dom_node_check_legacy_insertion_validity(parentp, child, stricterror, true)) {
 		RETURN_FALSE;
 	}
 
 	if (child->doc == NULL && parentp->doc != NULL) {
-		dom_set_document_pointers(child, parentp->doc, intern->document);
+		dom_set_document_ref_pointers(child, intern->document);
 	}
 
 	php_libxml_invalidate_node_list_cache(intern->document);
@@ -1156,14 +1192,7 @@ static void dom_node_replace_child(INTERNAL_FUNCTION_PARAMETERS, bool modern)
 			RETURN_FALSE;
 		}
 
-		if (dom_node_is_read_only(nodep) == SUCCESS ||
-			(newchild->parent != NULL && dom_node_is_read_only(newchild->parent) == SUCCESS)) {
-			php_dom_throw_error(NO_MODIFICATION_ALLOWED_ERR, stricterror);
-			RETURN_FALSE;
-		}
-
-		if (dom_hierarchy(nodep, newchild) == FAILURE) {
-			php_dom_throw_error(HIERARCHY_REQUEST_ERR, stricterror);
+		if (!dom_node_check_legacy_insertion_validity(nodep, newchild, stricterror, false)) {
 			RETURN_FALSE;
 		}
 
@@ -1174,7 +1203,7 @@ static void dom_node_replace_child(INTERNAL_FUNCTION_PARAMETERS, bool modern)
 	}
 
 	if (newchild->doc == NULL && nodep->doc != NULL) {
-		dom_set_document_pointers(newchild, nodep->doc, intern->document);
+		dom_set_document_ref_pointers(newchild, intern->document);
 	}
 
 	if (newchild->type == XML_DOCUMENT_FRAG_NODE) {
@@ -1277,12 +1306,12 @@ static void dom_node_append_child_legacy(zval *return_value, dom_object *intern,
 
 	bool stricterror = dom_get_strict_error(intern->document);
 
-	if (!dom_node_check_legacy_insertion_validity(nodep, child, stricterror)) {
+	if (!dom_node_check_legacy_insertion_validity(nodep, child, stricterror, true)) {
 		RETURN_FALSE;
 	}
 
 	if (child->doc == NULL && nodep->doc != NULL) {
-		dom_set_document_pointers(child, nodep->doc, intern->document);
+		dom_set_document_ref_pointers(child, intern->document);
 	}
 
 	if (child->parent != NULL){
