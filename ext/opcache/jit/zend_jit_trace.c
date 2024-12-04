@@ -1164,28 +1164,13 @@ static const zend_op *zend_jit_trace_find_init_fcall_op(zend_jit_trace_rec *p, c
 		if (opline) {
 			while (opline > op_array->opcodes) {
 				opline--;
-				switch (opline->opcode) {
-					case ZEND_INIT_FCALL:
-					case ZEND_INIT_FCALL_BY_NAME:
-					case ZEND_INIT_NS_FCALL_BY_NAME:
-					case ZEND_INIT_METHOD_CALL:
-					case ZEND_INIT_DYNAMIC_CALL:
-					case ZEND_INIT_STATIC_METHOD_CALL:
-					case ZEND_INIT_PARENT_PROPERTY_HOOK_CALL:
-					case ZEND_INIT_USER_CALL:
-					case ZEND_NEW:
-						if (call_level == 0) {
-							return opline;
-						}
-						call_level--;
-						break;
-					case ZEND_DO_FCALL:
-					case ZEND_DO_ICALL:
-					case ZEND_DO_UCALL:
-					case ZEND_DO_FCALL_BY_NAME:
-					case ZEND_CALLABLE_CONVERT:
-						call_level++;
-						break;
+				if (zend_jit_inc_call_level(opline->opcode)) {
+					if (call_level == 0) {
+						return opline;
+					}
+					call_level--;
+				} else if (zend_jit_dec_call_level(opline->opcode)) {
+					call_level++;
 				}
 			}
 		}
@@ -1860,11 +1845,6 @@ static zend_ssa *zend_jit_trace_build_tssa(zend_jit_trace_rec *trace_buffer, uin
 					ADD_OP2_TRACE_GUARD();
 					break;
 				case ZEND_ASSIGN_DIM_OP:
-					if (opline->extended_value == ZEND_POW
-					 || opline->extended_value == ZEND_DIV) {
-						// TODO: check for division by zero ???
-						break;
-					}
 					if (opline->result_type != IS_UNUSED) {
 						break;
 					}
@@ -1875,23 +1855,18 @@ static zend_ssa *zend_jit_trace_build_tssa(zend_jit_trace_rec *trace_buffer, uin
 					}
 					ZEND_FALLTHROUGH;
 				case ZEND_ASSIGN_DIM:
-					if (opline->op1_type == IS_CV) {
-						if ((opline+1)->op1_type == IS_CV
-						 && (opline+1)->op1.var == opline->op1.var) {
-							/* skip $a[x] = $a; */
-							break;
-						}
-						ADD_OP1_DATA_TRACE_GUARD();
-						ADD_OP2_TRACE_GUARD();
-						ADD_OP1_TRACE_GUARD();
-					} else if (orig_op1_type != IS_UNKNOWN
-					        && (orig_op1_type & IS_TRACE_INDIRECT)
-					        && opline->result_type == IS_UNUSED) {
-						if (opline->opcode == ZEND_ASSIGN_DIM_OP) {
-							ADD_OP1_DATA_TRACE_GUARD();
-						}
-						ADD_OP2_TRACE_GUARD();
+					if (opline->opcode == ZEND_ASSIGN_DIM
+					 && opline->op1_type == IS_CV
+					 && (opline+1)->op1_type == IS_CV
+					 && (opline+1)->op1.var == opline->op1.var) {
+						/* skip $a[x] = $a; */
+						break;
 					}
+					if (opline->op1_type == IS_CV || opline->opcode == ZEND_ASSIGN_DIM_OP) {
+						ADD_OP1_DATA_TRACE_GUARD();
+					}
+					ADD_OP2_TRACE_GUARD();
+					ADD_OP1_TRACE_GUARD();
 					if (op1_type == IS_ARRAY
 					 && ((opline->op2_type == IS_CONST
 					   && Z_TYPE_P(RT_CONSTANT(opline, opline->op2)) == IS_LONG)
@@ -4432,17 +4407,8 @@ static const void *zend_jit_trace(zend_jit_trace_rec *trace_buffer, uint32_t par
 
 			frame_flags = 0;
 
-			switch (opline->opcode) {
-				case ZEND_INIT_FCALL:
-				case ZEND_INIT_FCALL_BY_NAME:
-				case ZEND_INIT_NS_FCALL_BY_NAME:
-				case ZEND_INIT_METHOD_CALL:
-				case ZEND_INIT_DYNAMIC_CALL:
-				case ZEND_INIT_STATIC_METHOD_CALL:
-				case ZEND_INIT_PARENT_PROPERTY_HOOK_CALL:
-				case ZEND_INIT_USER_CALL:
-				case ZEND_NEW:
-					frame->call_level++;
+			if (zend_jit_inc_call_level(opline->opcode)) {
+				frame->call_level++;
 			}
 
 			if (JIT_G(opt_level) >= ZEND_JIT_LEVEL_INLINE) {
@@ -4773,6 +4739,9 @@ static const void *zend_jit_trace(zend_jit_trace_rec *trace_buffer, uint32_t par
 									op1_info, op2_info, op1_data_info, val_type))) {
 							goto jit_failure;
 						}
+						if (opline->op1_type == IS_VAR && !(op1_info & (MAY_BE_ANY-MAY_BE_NULL))) {
+							SET_STACK_TYPE(stack, EX_VAR_TO_NUM(opline->op1.var), IS_ARRAY, 1);
+						}
 						goto done;
 					case ZEND_PRE_INC_OBJ:
 					case ZEND_PRE_DEC_OBJ:
@@ -4792,7 +4761,7 @@ static const void *zend_jit_trace(zend_jit_trace_rec *trace_buffer, uint32_t par
 							ce = op_array->scope;
 							/* scope is NULL for closures. */
 							if (ce) {
-								ce_is_instanceof = (ce->ce_flags & ZEND_ACC_FINAL) != 0;
+								ce_is_instanceof = !(ce->ce_flags & ZEND_ACC_FINAL);
 							}
 							op1_addr = 0;
 							on_this = 1;
@@ -4886,7 +4855,7 @@ static const void *zend_jit_trace(zend_jit_trace_rec *trace_buffer, uint32_t par
 							ce = op_array->scope;
 							/* scope is NULL for closures. */
 							if (ce) {
-								ce_is_instanceof = (ce->ce_flags & ZEND_ACC_FINAL) != 0;
+								ce_is_instanceof = !(ce->ce_flags & ZEND_ACC_FINAL);
 							}
 							op1_addr = 0;
 							on_this = 1;
@@ -4969,7 +4938,7 @@ static const void *zend_jit_trace(zend_jit_trace_rec *trace_buffer, uint32_t par
 							ce = op_array->scope;
 							/* scope is NULL for closures. */
 							if (ce) {
-								ce_is_instanceof = (ce->ce_flags & ZEND_ACC_FINAL) != 0;
+								ce_is_instanceof = !(ce->ce_flags & ZEND_ACC_FINAL);
 							}
 							op1_addr = 0;
 							on_this = 1;
@@ -5096,6 +5065,9 @@ static const void *zend_jit_trace(zend_jit_trace_rec *trace_buffer, uint32_t par
 						 && (ssa_op+1)->op1_def >= 0
 						 && ssa->vars[(ssa_op+1)->op1_def].alias == NO_ALIAS) {
 							ssa->var_info[(ssa_op+1)->op1_def].guarded_reference = ssa->var_info[(ssa_op+1)->op1_use].guarded_reference;
+						}
+						if (opline->op1_type == IS_VAR && !(op1_info & (MAY_BE_ANY-MAY_BE_NULL))) {
+							SET_STACK_TYPE(stack, EX_VAR_TO_NUM(opline->op1.var), IS_ARRAY, 1);
 						}
 						goto done;
 					case ZEND_ASSIGN:
@@ -5564,6 +5536,9 @@ static const void *zend_jit_trace(zend_jit_trace_rec *trace_buffer, uint32_t par
 							res_type = Z_TYPE_P(RT_CONSTANT(opline, opline->op1));
 						} else if (op1_type != IS_UNKNOWN) {
 							res_type = op1_type;
+							if (res_type == IS_UNDEF) {
+								res_type = IS_NULL;
+							}
 						}
 						if (op_array->type == ZEND_EVAL_CODE
 						 // TODO: support for top-level code
@@ -6039,7 +6014,7 @@ static const void *zend_jit_trace(zend_jit_trace_rec *trace_buffer, uint32_t par
 							ce = op_array->scope;
 							/* scope is NULL for closures. */
 							if (ce) {
-								ce_is_instanceof = (ce->ce_flags & ZEND_ACC_FINAL) != 0;
+								ce_is_instanceof = !(ce->ce_flags & ZEND_ACC_FINAL);
 							}
 							op1_addr = 0;
 							on_this = 1;
@@ -6345,7 +6320,7 @@ static const void *zend_jit_trace(zend_jit_trace_rec *trace_buffer, uint32_t par
 							ce = op_array->scope;
 							/* scope is NULL for closures. */
 							if (ce) {
-								ce_is_instanceof = (ce->ce_flags & ZEND_ACC_FINAL) != 0;
+								ce_is_instanceof = !(ce->ce_flags & ZEND_ACC_FINAL);
 							}
 							op1_addr = 0;
 							on_this = 1;
@@ -6498,13 +6473,8 @@ static const void *zend_jit_trace(zend_jit_trace_rec *trace_buffer, uint32_t par
 
 done:
 			polymorphic_side_trace = 0;
-			switch (opline->opcode) {
-				case ZEND_DO_FCALL:
-				case ZEND_DO_ICALL:
-				case ZEND_DO_UCALL:
-				case ZEND_DO_FCALL_BY_NAME:
-				case ZEND_CALLABLE_CONVERT:
-					frame->call_level--;
+			if (zend_jit_dec_call_level(opline->opcode)) {
+				frame->call_level--;
 			}
 
 			if (ra) {
@@ -6932,7 +6902,7 @@ done:
 
 							ssa->var_info[j].type &= ~MAY_BE_GUARD;
 							op_type = concrete_type(ssa->var_info[j].type);
-							if (!zend_jit_type_guard(&ctx, opline, EX_NUM_TO_VAR(i), op_type)) {
+							if (!zend_jit_type_guard(&ctx, NULL, EX_NUM_TO_VAR(i), op_type)) {
 								goto jit_failure;
 							}
 							SET_STACK_TYPE(stack, i, op_type, 1);
@@ -7507,6 +7477,11 @@ static zend_jit_trace_stop zend_jit_compile_root_trace(zend_jit_trace_rec *trace
 			t->polymorphism = 0;
 			t->jmp_table_size = 0;
 			t->op_array = trace_buffer[0].op_array;
+			if (!(t->op_array->fn_flags & ZEND_ACC_IMMUTABLE)) {
+				zend_jit_op_array_trace_extension *jit_extension =
+					(zend_jit_op_array_trace_extension*)ZEND_FUNC_INFO(t->op_array);
+				t->op_array = jit_extension->op_array;
+			}
 			t->opline = trace_buffer[1].opline;
 			t->exit_info = exit_info;
 			t->stack_map = NULL;

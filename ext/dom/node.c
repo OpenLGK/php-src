@@ -837,8 +837,8 @@ static xmlNodePtr dom_insert_fragment(xmlNodePtr nodep, xmlNodePtr prevsib, xmlN
 
 static bool dom_node_check_legacy_insertion_validity(xmlNodePtr parentp, xmlNodePtr child, bool stricterror, bool warn_empty_fragment)
 {
-	if (dom_node_is_read_only(parentp) == SUCCESS ||
-		(child->parent != NULL && dom_node_is_read_only(child->parent) == SUCCESS)) {
+	if (dom_node_is_read_only(parentp) ||
+		(child->parent != NULL && dom_node_is_read_only(child->parent))) {
 		php_dom_throw_error(NO_MODIFICATION_ALLOWED_ERR, stricterror);
 		return false;
 	}
@@ -895,21 +895,24 @@ static void dom_node_insert_before_legacy(zval *return_value, zval *ref, dom_obj
 		RETURN_FALSE;
 	}
 
-	if (child->doc == NULL && parentp->doc != NULL) {
-		dom_set_document_ref_pointers(child, intern->document);
-	}
-
-	php_libxml_invalidate_node_list_cache(intern->document);
-
+	xmlNodePtr refp = NULL;
 	if (ref != NULL) {
-		xmlNodePtr refp;
 		dom_object *refpobj;
 		DOM_GET_OBJ(refp, ref, xmlNodePtr, refpobj);
 		if (refp->parent != parentp) {
 			php_dom_throw_error(NOT_FOUND_ERR, stricterror);
 			RETURN_FALSE;
 		}
+	}
 
+	if (child->doc == NULL && parentp->doc != NULL) {
+		xmlSetTreeDoc(child, parentp->doc);
+		dom_set_document_ref_pointers(child, intern->document);
+	}
+
+	php_libxml_invalidate_node_list_cache(intern->document);
+
+	if (ref != NULL) {
 		if (child->parent != NULL) {
 			xmlUnlinkNode(child);
 		}
@@ -1196,6 +1199,13 @@ static void dom_node_replace_child(INTERNAL_FUNCTION_PARAMETERS, bool modern)
 			RETURN_FALSE;
 		}
 
+		/* This is already disallowed by libxml, but we should check it here to avoid
+		 * breaking assumptions and assertions. */
+		if ((oldchild->type == XML_ATTRIBUTE_NODE) != (newchild->type == XML_ATTRIBUTE_NODE)) {
+			php_dom_throw_error(HIERARCHY_REQUEST_ERR, stricterror);
+			RETURN_FALSE;
+		}
+
 		if (oldchild->parent != nodep) {
 			php_dom_throw_error(NOT_FOUND_ERR, stricterror);
 			RETURN_FALSE;
@@ -1203,6 +1213,7 @@ static void dom_node_replace_child(INTERNAL_FUNCTION_PARAMETERS, bool modern)
 	}
 
 	if (newchild->doc == NULL && nodep->doc != NULL) {
+		xmlSetTreeDoc(newchild, nodep->doc);
 		dom_set_document_ref_pointers(newchild, intern->document);
 	}
 
@@ -1270,8 +1281,8 @@ static void dom_node_remove_child(INTERNAL_FUNCTION_PARAMETERS, zend_class_entry
 		RETURN_FALSE;
 	}
 
-	if (dom_node_is_read_only(nodep) == SUCCESS ||
-		(child->parent != NULL && dom_node_is_read_only(child->parent) == SUCCESS)) {
+	if (dom_node_is_read_only(nodep) ||
+		(child->parent != NULL && dom_node_is_read_only(child->parent))) {
 		php_dom_throw_error(NO_MODIFICATION_ALLOWED_ERR, stricterror);
 		RETURN_FALSE;
 	}
@@ -1311,6 +1322,7 @@ static void dom_node_append_child_legacy(zval *return_value, dom_object *intern,
 	}
 
 	if (child->doc == NULL && nodep->doc != NULL) {
+		xmlSetTreeDoc(child, nodep->doc);
 		dom_set_document_ref_pointers(child, intern->document);
 	}
 
@@ -2403,7 +2415,7 @@ PHP_METHOD(DOMNode, getRootNode)
 }
 /* }}} */
 
-/* {{{ URL: https://dom.spec.whatwg.org/#dom-node-comparedocumentposition (last check date 2023-07-24)
+/* {{{ URL: https://dom.spec.whatwg.org/#dom-node-comparedocumentposition (last check date 2024-11-17)
 Since:
 */
 

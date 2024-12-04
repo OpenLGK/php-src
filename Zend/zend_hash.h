@@ -30,12 +30,13 @@
 #define HASH_KEY_IS_LONG 2
 #define HASH_KEY_NON_EXISTENT 3
 
-#define HASH_UPDATE 			(1<<0)
-#define HASH_ADD				(1<<1)
-#define HASH_UPDATE_INDIRECT	(1<<2)
-#define HASH_ADD_NEW			(1<<3)
-#define HASH_ADD_NEXT			(1<<4)
-#define HASH_LOOKUP				(1<<5)
+#define HASH_UPDATE 			(1<<0) /* Create new entry, or update the existing one. */
+#define HASH_ADD				(1<<1) /* Create new entry, or fail if it exists. */
+#define HASH_UPDATE_INDIRECT	(1<<2) /* If the given ht entry is an indirect zval, unwrap it before writing to it. \
+										* When used with HASH_ADD, writing is allowed if the target zval is IS_UNDEF. */
+#define HASH_ADD_NEW			(1<<3) /* Used when the offset is known not to exist. */
+#define HASH_ADD_NEXT			(1<<4) /* Append to an array. (e.g. $array[] = 42;) */
+#define HASH_LOOKUP				(1<<5) /* Look up an existing entry, or create one with a NULL value. */
 
 #define HASH_FLAG_CONSISTENCY      ((1<<0) | (1<<1))
 #define HASH_FLAG_PACKED           (1<<2)
@@ -299,10 +300,18 @@ ZEND_API void  zend_hash_bucket_packed_swap(Bucket *p, Bucket *q);
 typedef int (*bucket_compare_func_t)(Bucket *a, Bucket *b);
 ZEND_API int   zend_hash_compare(HashTable *ht1, HashTable *ht2, compare_func_t compar, bool ordered);
 ZEND_API void  ZEND_FASTCALL zend_hash_sort_ex(HashTable *ht, sort_func_t sort_func, bucket_compare_func_t compare_func, bool renumber);
+ZEND_API void  ZEND_FASTCALL zend_array_sort_ex(HashTable *ht, sort_func_t sort_func, bucket_compare_func_t compare_func, bool renumber);
 ZEND_API zval* ZEND_FASTCALL zend_hash_minmax(const HashTable *ht, compare_func_t compar, uint32_t flag);
 
 static zend_always_inline void ZEND_FASTCALL zend_hash_sort(HashTable *ht, bucket_compare_func_t compare_func, bool renumber) {
 	zend_hash_sort_ex(ht, zend_sort, compare_func, renumber);
+}
+
+/* Use this variant over zend_hash_sort() when sorting user arrays that may
+ * trigger user code. It will ensure the user code cannot free the array during
+ * sorting. */
+static zend_always_inline void zend_array_sort(HashTable *ht, bucket_compare_func_t compare_func, bool renumber) {
+	zend_array_sort_ex(ht, zend_sort, compare_func, renumber);
 }
 
 static zend_always_inline uint32_t zend_hash_num_elements(const HashTable *ht) {

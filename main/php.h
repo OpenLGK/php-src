@@ -109,13 +109,6 @@ typedef int pid_t;
 # endif
 #endif
 
-#if PHP_DEBUG
-#undef NDEBUG
-#else
-#ifndef NDEBUG
-#define NDEBUG
-#endif
-#endif
 #include <assert.h>
 
 #ifdef HAVE_UNIX_H
@@ -271,6 +264,8 @@ END_EXTERN_C()
 #define php_sleep sleep
 extern char **environ;
 #endif	/* ifndef PHP_WIN32 */
+
+extern const char php_build_date[];
 
 #ifdef PHP_PWRITE_64
 ssize_t pwrite(int, void *, size_t, off64_t);

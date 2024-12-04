@@ -25,6 +25,13 @@ PHP 8.5 UPGRADE NOTES
   . bzcompress() now throws a ValueError when $work_factor is not between
     0 and 250.
 
+- Core:
+  . It is no longer possible to use "array" and "callable" as class alias names
+    in class_alias().
+
+- Intl:
+  . The extension now requires at least ICU 57.1.
+
 - LDAP:
   . ldap_get_option() and ldap_set_option() now throw a ValueError when
     passing an invalid option.
@@ -36,6 +43,10 @@ PHP 8.5 UPGRADE NOTES
 ========================================
 2. New Features
 ========================================
+
+- Core:
+  . Added support for Closures in constant expressions.
+    RFC: https://wiki.php.net/rfc/closures_in_const_expr
 
 - DOM:
   . Added Dom\Element::$outerHTML.
@@ -55,6 +66,11 @@ PHP 8.5 UPGRADE NOTES
 ========================================
 4. Deprecated Functionality
 ========================================
+
+- Hash:
+  The MHASH_* constants have been deprecated.  These have been overlooked
+  when the mhash*() function family has been deprecated per
+  https://wiki.php.net/rfc/deprecations_php_8_1#mhash_function_family
 
 ========================================
 5. Changed Functions
@@ -83,10 +99,18 @@ PHP 8.5 UPGRADE NOTES
     attached to a CurlMultiHandle. This includes both handles added using
     curl_multi_add_handle() and handles accepted by CURLMOPT_PUSHFUNCTION.
 
+- DOM:
+  . Added Dom\Element::insertAdjacentHTML().
+
 - PGSQL:
   . pg_close_stmt offers an alternative way to close a prepared
     statement from the DEALLOCATE sql command in that we can reuse
     its name afterwards.
+
+- Reflection:
+  . ReflectionConstant::getFileName() was introduced.
+  . ReflectionConstant::getExtension() and
+    ReflectionConstant::getExtensionName() were introduced.
 
 ========================================
 7. New Classes and Interfaces
@@ -100,13 +124,39 @@ PHP 8.5 UPGRADE NOTES
 9. Other Changes to Extensions
 ========================================
 
+- Readline:
+  . The return types of readline_add_history(), readline_clear_history(), and
+    readline_callback_handler_install() have been changed to true, rather
+    than bool.
+
 ========================================
 10. New Global Constants
 ========================================
 
+- Core:
+  . PHP_BUILD_DATE.
+
+- POSIX:
+  . POSIX_SC_OPEN_MAX.
+
+- Sockets:
+  . IPPROTO_ICMP/IPPROTO_ICMPV6.
+  . TCP_FUNCTION_BLK (FreeBSD only).
+
 ========================================
 11. Changes to INI File Handling
 ========================================
+
+- Opcache:
+  . Added opcache.file_cache_read_only to support a read-only
+    opcache.file_cache directory, for use with read-only file systems
+    (e.g. read-only Docker containers).
+    Best used with opcache.validate_timestamps=0,
+    opcache.enable_file_override=1,
+    and opcache.file_cache_consistency_checks=0.
+    Note: A cache generated with a different build of PHP, a different file
+    path, or different settings (including which extensions are loaded), may be
+    ignored.
 
 ========================================
 12. Windows Support
@@ -115,6 +165,11 @@ PHP 8.5 UPGRADE NOTES
 * The configuration variables PHP_VERSION, PHP_MINOR_VERSION, and
   PHP_RELEASE_VERSION are now always numbers.  Previously, they have been
   strings for buildconf builds.
+
+* COM:
+  . The extension is now build shared by default; previously it defaulted to a
+    static extension, although the official Windows binaries built a shared
+    extension.
 
 * FFI:
   . It is no longer necessary to specify the library when using FFI::cdef()

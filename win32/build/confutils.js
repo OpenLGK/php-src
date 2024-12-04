@@ -3429,7 +3429,7 @@ function toolset_setup_common_libs()
 function toolset_setup_build_mode()
 {
 	if (PHP_DEBUG == "yes") {
-		ADD_FLAG("CFLAGS", "/LDd /MDd /Od /D ZEND_DEBUG=1 " +
+		ADD_FLAG("CFLAGS", "/LDd /MDd /Od /U NDebug /U NDEBUG /D ZEND_DEBUG=1 " +
 			(TARGET_ARCH == 'x86'?"/ZI":"/Zi"));
 		ADD_FLAG("LDFLAGS", "/debug");
 		// Avoid problems when linking to release libraries that use the release
@@ -3624,6 +3624,11 @@ function ADD_MAKEFILE_FRAGMENT(src_file)
 		h_in.Close();
 		h_out.Close();
 	}
+}
+
+function SETUP_ZLIB_LIB(target, path_to_check)
+{
+	return (PHP_ZLIB != "no" && !PHP_ZLIB_SHARED) || CHECK_LIB("zlib_a.lib;zlib.lib", target, path_to_check);
 }
 
 function SETUP_OPENSSL(target, path_to_check, common_name, use_env, add_dir_part, add_to_flag_only)

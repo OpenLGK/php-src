@@ -640,6 +640,13 @@ const TCP_KEEPINTVL = UNKNOWN;
  */
 const TCP_KEEPCNT = UNKNOWN;
 #endif
+#ifdef TCP_FUNCTION_BLK
+/**
+ * @var int
+ * @cvalue TCP_FUNCTION_BLK
+ */
+const TCP_FUNCTION_BLK = UNKNOWN;
+#endif
 /**
  * @var int
  * @cvalue PHP_NORMAL_READ
@@ -1646,6 +1653,20 @@ const SOL_UDP = UNKNOWN;
  * @cvalue IPPROTO_UDPLITE
  */
 const SOL_UDPLITE = UNKNOWN;
+#endif
+#if defined(IPPROTO_ICMP) || defined(PHP_WIN32)
+/**
+ * @var int
+ * @cvalue IPPROTO_ICMP
+ */
+const IPPROTO_ICMP = UNKNOWN;
+#endif
+#if defined(IPPROTO_ICMPV6) || defined(PHP_WIN32)
+/**
+ * @var int
+ * @cvalue IPPROTO_ICMPV6
+ */
+const IPPROTO_ICMPV6 = UNKNOWN;
 #endif
 
 #ifdef HAVE_IPV6

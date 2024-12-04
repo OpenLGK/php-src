@@ -374,7 +374,7 @@ class ReflectionClass implements Reflector
 
     public function newLazyProxy(callable $factory, int $options = 0): object {}
 
-    public function resetAsLazyGhost(object $object, callable $factory, int $options = 0): void {}
+    public function resetAsLazyGhost(object $object, callable $initializer, int $options = 0): void {}
 
     public function resetAsLazyProxy(object $object, callable $factory, int $options = 0): void {}
 
@@ -495,6 +495,8 @@ class ReflectionProperty implements Reflector
     public function setRawValueWithoutLazyInitialization(object $object, mixed $value): void {}
 
     public function skipLazyInitialization(object $object): void {}
+
+    public function isLazy(object $object): bool {}
 
     /** @tentative-return-type */
     public function isInitialized(?object $object = null): bool {}
@@ -913,6 +915,12 @@ final class ReflectionConstant implements Reflector
     public function getValue(): mixed {}
 
     public function isDeprecated(): bool {}
+
+    public function getFileName(): string|false {}
+
+    public function getExtension(): ?ReflectionExtension {}
+
+    public function getExtensionName(): string|false {}
 
     public function __toString(): string {}
 }

@@ -155,7 +155,7 @@ typedef struct dom_prop_handler {
 	dom_write_t write_func;
 } dom_prop_handler;
 
-int dom_node_is_read_only(const xmlNode *node) {
+bool dom_node_is_read_only(const xmlNode *node) {
 	switch (node->type) {
 		case XML_ENTITY_REF_NODE:
 		case XML_ENTITY_NODE:
@@ -166,14 +166,9 @@ int dom_node_is_read_only(const xmlNode *node) {
 		case XML_ATTRIBUTE_DECL:
 		case XML_ENTITY_DECL:
 		case XML_NAMESPACE_DECL:
-			return SUCCESS;
-			break;
+			return true;
 		default:
-			if (node->doc == NULL) {
-				return SUCCESS;
-			} else {
-				return FAILURE;
-			}
+			return node->doc == NULL;
 	}
 }
 
@@ -1470,6 +1465,10 @@ void dom_namednode_iter(dom_object *basenode, int ntype, dom_object *intern, xml
 	mapptr->baseobj = basenode;
 	mapptr->nodetype = ntype;
 	mapptr->ht = ht;
+	if (EXPECTED(doc != NULL)) {
+		mapptr->dict = doc->dict;
+		xmlDictReference(doc->dict);
+	}
 
 	const xmlChar* tmp;
 
@@ -1583,6 +1582,7 @@ void dom_nnodemap_objects_free_storage(zend_object *object) /* {{{ */
 		if (!Z_ISUNDEF(objmap->baseobj_zv)) {
 			zval_ptr_dtor(&objmap->baseobj_zv);
 		}
+		xmlDictFree(objmap->dict);
 		efree(objmap);
 		intern->ptr = NULL;
 	}
@@ -1614,6 +1614,7 @@ zend_object *dom_nnodemap_objects_new(zend_class_entry *class_type)
 	objmap->cached_length = -1;
 	objmap->cached_obj = NULL;
 	objmap->cached_obj_index = 0;
+	objmap->dict = NULL;
 
 	return &intern->std;
 }

@@ -1632,6 +1632,7 @@ namespace Dom
 
         public function insertAdjacentElement(AdjacentPosition $where, Element $element): ?Element {}
         public function insertAdjacentText(AdjacentPosition $where, string $data): void {}
+        public function insertAdjacentHTML(AdjacentPosition $where, string $string): void {}
 
         /**
          * @readonly
@@ -2099,7 +2100,7 @@ namespace Dom
      * @not-serializable
      * @strict-properties
      */
-    final class TokenList implements IteratorAggregate, Countable
+    final class TokenList implements \IteratorAggregate, \Countable
     {
         /** @implementation-alias Dom\Node::__construct */
         private function __construct() {}

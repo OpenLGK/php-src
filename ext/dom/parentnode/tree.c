@@ -239,8 +239,11 @@ static bool dom_is_pre_insert_valid_without_step_1(php_libxml_ref_obj *document,
 	ZEND_ASSERT(parentNode != NULL);
 
 	/* 1. If parent is not a Document, DocumentFragment, or Element node, then throw a "HierarchyRequestError" DOMException.
-	 *    => Impossible */
-	ZEND_ASSERT(!php_dom_pre_insert_is_parent_invalid(parentNode));
+	 *    => This is possible because we can grab children of attributes etc... (see e.g. GH-16594) */
+	if (php_dom_pre_insert_is_parent_invalid(parentNode)) {
+		php_dom_throw_error(HIERARCHY_REQUEST_ERR, dom_get_strict_error(document));
+		return false;
+	}
 
 	if (node->doc != documentNode) {
 		php_dom_throw_error(WRONG_DOCUMENT_ERR, dom_get_strict_error(document));
@@ -497,7 +500,7 @@ static void dom_insert_node_list_cleanup(xmlNodePtr node)
 		xmlFreeNode(node);
 	} else {
 		/* Must have been a directly-passed node. */
-		ZEND_ASSERT(node->_private != NULL);
+		ZEND_UNREACHABLE();
 	}
 }
 
@@ -696,8 +699,8 @@ void dom_parent_node_before(dom_object *context, zval *nodes, uint32_t nodesc)
 
 static zend_result dom_child_removal_preconditions(const xmlNode *child, const dom_object *context)
 {
-	if (dom_node_is_read_only(child) == SUCCESS ||
-		(child->parent != NULL && dom_node_is_read_only(child->parent) == SUCCESS)) {
+	if (dom_node_is_read_only(child) ||
+		(child->parent != NULL && dom_node_is_read_only(child->parent))) {
 		php_dom_throw_error(NO_MODIFICATION_ALLOWED_ERR, dom_get_strict_error(context->document));
 		return FAILURE;
 	}

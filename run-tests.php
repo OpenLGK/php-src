@@ -26,7 +26,7 @@
 /* Let there be no top-level code beyond this point:
  * Only functions and classes, thanks!
  *
- * Minimum required PHP version: 7.4.0
+ * Minimum required PHP version: 8.0.0
  */
 
 function show_usage(): void
@@ -693,7 +693,6 @@ function main(): void
     if ($test_cnt) {
         putenv('NO_INTERACTION=1');
         usort($test_files, "test_sort");
-        $start_timestamp = time();
         $start_time = hrtime(true);
 
         echo "Running selected tests.\n";
@@ -781,23 +780,6 @@ function main(): void
     if (getenv('REPORT_EXIT_STATUS') !== '0' && getenv('REPORT_EXIT_STATUS') !== 'no' &&
             ($sum_results['FAILED'] || $sum_results['BORKED'] || $sum_results['LEAKED'])) {
         exit(1);
-    }
-}
-
-if (!function_exists("hrtime")) {
-    /**
-     * @return array|float|int
-     */
-    function hrtime(bool $as_num = false)
-    {
-        $t = microtime(true);
-
-        if ($as_num) {
-            return $t * 1000000000;
-        }
-
-        $s = floor($t);
-        return [0 => $s, 1 => ($t - $s) * 1000000000];
     }
 }
 
@@ -1094,7 +1076,7 @@ function test_sort($a, $b): int
 }
 
 //
-//  Write the given text to a temporary file, and return the filename.
+//  Write the given text to a temporary file.
 //
 
 function save_text(string $filename, string $text, ?string $filename_copy = null): void
@@ -2883,19 +2865,6 @@ function expectf_to_regex(?string $wanted): string
         '%0' => '\x00',
     ]);
 }
-
-/**
- * @return bool|int
- */
-function comp_line(string $l1, string $l2, bool $is_reg)
-{
-    if ($is_reg) {
-        return preg_match('/^' . $l1 . '$/s', $l2);
-    }
-
-    return !strcmp($l1, $l2);
-}
-
 /**
  * Map "Zend OPcache" to "opcache" and convert all ext names to lowercase.
  */

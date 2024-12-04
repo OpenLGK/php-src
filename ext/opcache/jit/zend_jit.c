@@ -69,6 +69,8 @@ zend_jit_globals jit_globals;
 #define JIT_STUB_PREFIX "JIT$$"
 #define TRACE_PREFIX    "TRACE-"
 
+bool zend_jit_startup_ok = false;
+
 zend_ulong zend_jit_profile_counter = 0;
 int zend_jit_profile_counter_rid = -1;
 
@@ -692,6 +694,78 @@ static bool zend_may_be_dynamic_property(zend_class_entry *ce, zend_string *memb
 	return 0;
 }
 
+static bool zend_jit_class_may_be_modified(const zend_class_entry *ce, const zend_op_array *called_from)
+{
+	uint32_t i;
+
+	if (ce->type == ZEND_INTERNAL_CLASS) {
+#ifdef _WIN32
+		/* ASLR */
+		return 1;
+#else
+		return 0;
+#endif
+	} else if (ce->type == ZEND_USER_CLASS) {
+		if (ce->ce_flags & ZEND_ACC_PRELOADED) {
+			return 0;
+		}
+		if (ce->info.user.filename == called_from->filename) {
+			if (ce->parent
+			 && (!(ce->ce_flags & ZEND_ACC_LINKED)
+			  || zend_jit_class_may_be_modified(ce->parent, called_from))) {
+				return 1;
+			}
+			if (ce->num_interfaces) {
+				if (!(ce->ce_flags & ZEND_ACC_LINKED)) {
+					return 1;
+				}
+				for (i = 0; i < ce->num_interfaces; i++) {
+					if (zend_jit_class_may_be_modified(ce->interfaces[i], called_from)) {
+						return 1;
+					}
+				}
+			}
+			if (ce->num_traits) {
+				if (!(ce->ce_flags & ZEND_ACC_LINKED)) {
+					return 1;
+				}
+				for (i=0; i < ce->num_traits; i++) {
+					zend_class_entry *trait = zend_fetch_class_by_name(ce->trait_names[i].name,
+						ce->trait_names[i].lc_name,
+						ZEND_FETCH_CLASS_TRAIT | ZEND_FETCH_CLASS_NO_AUTOLOAD | ZEND_FETCH_CLASS_SILENT);
+					if (!trait || zend_jit_class_may_be_modified(trait, called_from)) {
+						return 1;
+					}
+				}
+			}
+			return 0;
+		}
+	}
+	return 1;
+}
+
+static bool zend_jit_may_be_modified(const zend_function *func, const zend_op_array *called_from)
+{
+	if (func->type == ZEND_INTERNAL_FUNCTION) {
+#ifdef _WIN32
+		/* ASLR */
+		return 1;
+#else
+		return 0;
+#endif
+	} else if (func->type == ZEND_USER_FUNCTION) {
+		if (func->common.fn_flags & ZEND_ACC_PRELOADED) {
+			return 0;
+		}
+		if (func->op_array.filename == called_from->filename
+		 && (!func->op_array.scope
+		  || !zend_jit_class_may_be_modified(func->op_array.scope, called_from))) {
+			return 0;
+		}
+	}
+	return 1;
+}
+
 #define OP_RANGE(ssa_op, opN) \
 	(((opline->opN##_type & (IS_TMP_VAR|IS_VAR|IS_CV)) && \
 	  ssa->var_info && \
@@ -760,6 +834,38 @@ ZEND_EXT_API void zend_jit_status(zval *ret)
 		add_assoc_long(&stats, "buffer_free", 0);
 	}
 	add_assoc_zval(ret, "jit", &stats);
+}
+
+static bool zend_jit_inc_call_level(uint8_t opcode)
+{
+	switch (opcode) {
+		case ZEND_INIT_FCALL:
+		case ZEND_INIT_FCALL_BY_NAME:
+		case ZEND_INIT_NS_FCALL_BY_NAME:
+		case ZEND_INIT_METHOD_CALL:
+		case ZEND_INIT_DYNAMIC_CALL:
+		case ZEND_INIT_STATIC_METHOD_CALL:
+		case ZEND_INIT_PARENT_PROPERTY_HOOK_CALL:
+		case ZEND_INIT_USER_CALL:
+		case ZEND_NEW:
+			return true;
+		default:
+			return false;
+	}
+}
+
+static bool zend_jit_dec_call_level(uint8_t opcode)
+{
+	switch (opcode) {
+		case ZEND_DO_FCALL:
+		case ZEND_DO_ICALL:
+		case ZEND_DO_UCALL:
+		case ZEND_DO_FCALL_BY_NAME:
+		case ZEND_CALLABLE_CONVERT:
+			return true;
+		default:
+			return false;
+	}
 }
 
 static zend_string *zend_jit_func_name(const zend_op_array *op_array)
@@ -1498,17 +1604,8 @@ static int zend_jit(const zend_op_array *op_array, zend_ssa *ssa, const zend_op 
 		for (i = ssa->cfg.blocks[b].start; i <= end; i++) {
 			zend_ssa_op *ssa_op = ssa->ops ? &ssa->ops[i] : NULL;
 			opline = op_array->opcodes + i;
-			switch (opline->opcode) {
-				case ZEND_INIT_FCALL:
-				case ZEND_INIT_FCALL_BY_NAME:
-				case ZEND_INIT_NS_FCALL_BY_NAME:
-				case ZEND_INIT_METHOD_CALL:
-				case ZEND_INIT_DYNAMIC_CALL:
-				case ZEND_INIT_STATIC_METHOD_CALL:
-				case ZEND_INIT_PARENT_PROPERTY_HOOK_CALL:
-				case ZEND_INIT_USER_CALL:
-				case ZEND_NEW:
-					call_level++;
+			if (zend_jit_inc_call_level(opline->opcode)) {
+				call_level++;
 			}
 
 			if (JIT_G(opt_level) >= ZEND_JIT_LEVEL_INLINE) {
@@ -1788,7 +1885,7 @@ static int zend_jit(const zend_op_array *op_array, zend_ssa *ssa, const zend_op 
 							ce = op_array->scope;
 							/* scope is NULL for closures. */
 							if (ce) {
-								ce_is_instanceof = (ce->ce_flags & ZEND_ACC_FINAL) != 0;
+								ce_is_instanceof = !(ce->ce_flags & ZEND_ACC_FINAL);
 							}
 							op1_addr = 0;
 							on_this = 1;
@@ -1839,7 +1936,7 @@ static int zend_jit(const zend_op_array *op_array, zend_ssa *ssa, const zend_op 
 							ce = op_array->scope;
 							/* scope is NULL for closures. */
 							if (ce) {
-								ce_is_instanceof = (ce->ce_flags & ZEND_ACC_FINAL) != 0;
+								ce_is_instanceof = !(ce->ce_flags & ZEND_ACC_FINAL);
 							}
 							op1_addr = 0;
 							on_this = 1;
@@ -1883,7 +1980,7 @@ static int zend_jit(const zend_op_array *op_array, zend_ssa *ssa, const zend_op 
 							ce = op_array->scope;
 							/* scope is NULL for closures. */
 							if (ce) {
-								ce_is_instanceof = (ce->ce_flags & ZEND_ACC_FINAL) != 0;
+								ce_is_instanceof = !(ce->ce_flags & ZEND_ACC_FINAL);
 							}
 							op1_addr = 0;
 							on_this = 1;
@@ -2361,7 +2458,7 @@ static int zend_jit(const zend_op_array *op_array, zend_ssa *ssa, const zend_op 
 							ce = op_array->scope;
 							/* scope is NULL for closures. */
 							if (ce) {
-								ce_is_instanceof = (ce->ce_flags & ZEND_ACC_FINAL) != 0;
+								ce_is_instanceof = !(ce->ce_flags & ZEND_ACC_FINAL);
 							}
 							on_this = 1;
 						} else {
@@ -2531,7 +2628,7 @@ static int zend_jit(const zend_op_array *op_array, zend_ssa *ssa, const zend_op 
 							ce = op_array->scope;
 							/* scope is NULL for closures. */
 							if (ce) {
-								ce_is_instanceof = (ce->ce_flags & ZEND_ACC_FINAL) != 0;
+								ce_is_instanceof = !(ce->ce_flags & ZEND_ACC_FINAL);
 							}
 							on_this = 1;
 						} else {
@@ -2640,7 +2737,19 @@ static int zend_jit(const zend_op_array *op_array, zend_ssa *ssa, const zend_op 
 					}
 					/* THROW and EXIT may be used in the middle of BB */
 					/* don't generate code for the rest of BB */
-					i = end;
+
+					/* Skip current opline for call_level computation
+					 * Don't include last opline because end of loop already checks call level of last opline */
+					i++;
+					for (; i < end; i++) {
+						opline = op_array->opcodes + i;
+						if (zend_jit_inc_call_level(opline->opcode)) {
+							call_level++;
+						} else if (zend_jit_dec_call_level(opline->opcode)) {
+							call_level--;
+						}
+					}
+					opline = op_array->opcodes + i;
 					break;
 				/* stackless execution */
 				case ZEND_INCLUDE_OR_EVAL:
@@ -2752,13 +2861,8 @@ static int zend_jit(const zend_op_array *op_array, zend_ssa *ssa, const zend_op 
 					}
 			}
 done:
-			switch (opline->opcode) {
-				case ZEND_DO_FCALL:
-				case ZEND_DO_ICALL:
-				case ZEND_DO_UCALL:
-				case ZEND_DO_FCALL_BY_NAME:
-				case ZEND_CALLABLE_CONVERT:
-					call_level--;
+			if (zend_jit_dec_call_level(opline->opcode)) {
+				call_level--;
 			}
 		}
 		zend_jit_bb_end(&ctx, b);
@@ -3700,6 +3804,13 @@ static void zend_jit_reset_counters(void)
 
 void zend_jit_activate(void)
 {
+#ifdef ZTS
+	if (!zend_jit_startup_ok) {
+		JIT_G(enabled) = 0;
+		JIT_G(on) = 0;
+		return;
+	}
+#endif
 	zend_jit_profile_counter = 0;
 	if (JIT_G(on)) {
 		if (JIT_G(trigger) == ZEND_JIT_ON_HOT_COUNTERS) {
