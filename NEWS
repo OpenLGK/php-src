@@ -12,9 +12,15 @@ PHP                                                                        NEWS
   . Added PHP_BUILD_DATE constant. (cmb)
   . Added support for Closures in constant expressions. (timwolla,
     Volker Dusch)
+  . Use `clock_gettime_nsec_np()` for high resolution timer on macOS
+    if available. (timwolla)
 
 - Curl:
   . Added curl_multi_get_handles(). (timwolla)
+
+- Date:
+  . Fix undefined behaviour problems regarding integer overflow in extreme edge
+    cases. (nielsdos, cmb, ilutov)
 
 - DOM:
   . Added Dom\Element::$outerHTML. (nielsdos)
@@ -48,6 +54,9 @@ PHP                                                                        NEWS
 - POSIX:
   . Added POSIX_SC_OPEN_MAX constant to get the number of file descriptors
     a process can handle. (David Carlier)
+  . posix_ttyname() sets last_error to EBADF on invalid file descriptors,
+    posix_isatty() raises E_WARNING on invalid file descriptors,
+    posix_fpathconf checks invalid file descriptors. (David Carlier)
 
 - Random:
   . Moves from /dev/urandom usage to arc4random_buf on Haiku. (David Carlier)
@@ -70,9 +79,14 @@ PHP                                                                        NEWS
   . Fixed crypt() tests on musl when using --with-external-libcrypt
     (Michael Orlitzky).
 
+- Streams:
+  . Fixed bug GH-16889 (stream_select() timeout useless for pipes on Windows).
+    (cmb)
+
 - Windows:
   . Fixed bug GH-10992 (Improper long path support for relative paths). (cmb,
     nielsdos)
+  . Fixed bug GH-16843 (Windows phpize builds ignore source subfolders). (cmb)
 
 - XMLWriter:
   . Improved performance and reduce memory consumption. (nielsdos)
