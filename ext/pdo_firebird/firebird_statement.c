@@ -158,8 +158,9 @@ static int pdo_firebird_stmt_dtor(pdo_stmt_t *stmt) /* {{{ */
 	pdo_firebird_stmt *S = (pdo_firebird_stmt*)stmt->driver_data;
 	int result = 1;
 
-	/* release the statement */
-	if (isc_dsql_free_statement(S->H->isc_status, &S->stmt, DSQL_drop)) {
+	/* release the statement.
+	 * Note: if the server object is already gone then the statement was closed already as well. */
+	if (php_pdo_stmt_valid_db_obj_handle(stmt) && isc_dsql_free_statement(S->H->isc_status, &S->stmt, DSQL_drop)) {
 		php_firebird_error_stmt(stmt);
 		result = 0;
 	}
@@ -886,7 +887,7 @@ static int pdo_firebird_stmt_set_attribute(pdo_stmt_t *stmt, zend_long attr, zva
 	switch (attr) {
 		default:
 			return 0;
-		case PDO_ATTR_CURSOR_NAME:
+		case PDO_ATTR_CURSOR_NAME: {
 			zend_string *str_val = zval_try_get_string(val);
 			if (str_val == NULL) {
 				return 0;
@@ -907,6 +908,7 @@ static int pdo_firebird_stmt_set_attribute(pdo_stmt_t *stmt, zend_long attr, zva
 			memcpy(S->name, ZSTR_VAL(str_val), ZSTR_LEN(str_val) + 1);
 			zend_string_release(str_val);
 			break;
+		}
 	}
 	return 1;
 }

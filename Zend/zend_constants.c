@@ -312,13 +312,13 @@ ZEND_API zval *zend_get_class_constant_ex(zend_string *class_name, zend_string *
 		if (!ce) {
 			ce = zend_fetch_class(class_name, flags);
 		}
-	} else if (zend_string_equals_literal_ci(class_name, "self")) {
+	} else if (zend_string_equals_ci(class_name, ZSTR_KNOWN(ZEND_STR_SELF))) {
 		if (UNEXPECTED(!scope)) {
 			zend_throw_error(NULL, "Cannot access \"self\" when no class scope is active");
 			goto failure;
 		}
 		ce = scope;
-	} else if (zend_string_equals_literal_ci(class_name, "parent")) {
+	} else if (zend_string_equals_ci(class_name, ZSTR_KNOWN(ZEND_STR_PARENT))) {
 		if (UNEXPECTED(!scope)) {
 			zend_throw_error(NULL, "Cannot access \"parent\" when no class scope is active");
 			goto failure;
@@ -362,8 +362,10 @@ ZEND_API zval *zend_get_class_constant_ex(zend_string *class_name, zend_string *
 			}
 
 			if (UNEXPECTED(ZEND_CLASS_CONST_FLAGS(c) & ZEND_ACC_DEPRECATED)) {
-				if ((flags & ZEND_FETCH_CLASS_SILENT) == 0) {
+				if ((flags & ZEND_FETCH_CLASS_SILENT) == 0 && !CONST_IS_RECURSIVE(c)) {
+					CONST_PROTECT_RECURSION(c);
 					zend_deprecated_class_constant(c, constant_name);
+					CONST_UNPROTECT_RECURSION(c);
 					if (EG(exception)) {
 						goto failure;
 					}

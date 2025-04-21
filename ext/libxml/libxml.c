@@ -433,9 +433,9 @@ static void *php_libxml_streams_IO_open_wrapper(const char *filename, const char
 
 			if (strncasecmp(resolved_path, "file:/", pre_len) == 0
 				&& '/' != resolved_path[pre_len]) {
-				xmlChar *tmp = xmlStrdup(resolved_path + pre_len);
+				xmlChar *tmp = xmlStrdup(BAD_CAST (resolved_path + pre_len));
 				xmlFree(resolved_path);
-				resolved_path = tmp;
+				resolved_path = (char *) tmp;
 			}
 		}
 #endif
@@ -562,11 +562,11 @@ php_libxml_output_buffer_create_filename(const char *URI,
 	char *unescaped = NULL;
 
 	if (URI == NULL)
-		return(NULL);
+		goto err;
 
 	if (strstr(URI, "%00")) {
 		php_error_docref(NULL, E_WARNING, "URI must not contain percent-encoded NUL bytes");
-		return NULL;
+		goto err;
 	}
 
 	puri = xmlParseURI(URI);
@@ -587,7 +587,7 @@ php_libxml_output_buffer_create_filename(const char *URI,
 	}
 
 	if (context == NULL) {
-		return(NULL);
+		goto err;
 	}
 
 	/* Allocate the Output buffer front-end. */
@@ -599,6 +599,11 @@ php_libxml_output_buffer_create_filename(const char *URI,
 	}
 
 	return(ret);
+
+err:
+	/* Similarly to __xmlOutputBufferCreateFilename we should also close the encoder on failure. */
+	xmlCharEncCloseFunc(encoder);
+	return NULL;
 }
 
 static void php_libxml_free_error(void *ptr)
@@ -764,13 +769,18 @@ static xmlParserInputPtr php_libxml_external_entity_loader(const char *URL,
 is_string:
 			resource = Z_STRVAL(retval);
 		} else if (Z_TYPE(retval) == IS_RESOURCE) {
-			php_stream *stream;
-			php_stream_from_zval_no_verify(stream, &retval);
-			if (stream == NULL) {
-				php_libxml_ctx_error(context,
-						"The user entity loader callback '%s' has returned a "
-						"resource, but it is not a stream",
-						ZSTR_VAL(LIBXML(entity_loader_callback).function_handler->common.function_name));
+			php_stream *stream = (php_stream*)zend_fetch_resource2_ex(&retval, NULL, php_file_le_stream(), php_file_le_pstream());
+			if (UNEXPECTED(stream == NULL)) {
+				zval callable;
+				zend_get_callable_zval_from_fcc(&LIBXML(entity_loader_callback), &callable);
+				zend_string *callable_name = zend_get_callable_name(&callable);
+				zend_string *func_name = get_active_function_or_method_name();
+				zend_type_error(
+					"%s(): The user entity loader callback \"%s\" has returned a resource, but it is not a stream",
+					ZSTR_VAL(func_name), ZSTR_VAL(callable_name));
+				zend_string_release(func_name);
+				zend_string_release(callable_name);
+				zval_ptr_dtor(&callable);
 			} else {
 				/* TODO: allow storing the encoding in the stream context? */
 				xmlCharEncoding enc = XML_CHAR_ENCODING_NONE;

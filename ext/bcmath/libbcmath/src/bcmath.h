@@ -78,6 +78,8 @@ typedef struct bc_struct {
 
 void bc_init_numbers(void);
 
+void bc_force_free_number(bc_num *num);
+
 bc_num _bc_new_num_ex(size_t length, size_t scale, bool persistent);
 
 bc_num _bc_new_num_nonzeroed_ex(size_t length, size_t scale, bool persistent);
@@ -155,7 +157,7 @@ bool bc_divmod(bc_num num1, bc_num num2, bc_num *quo, bc_num *rem, size_t scale)
 
 bc_num bc_floor_or_ceil(bc_num num, bool is_floor);
 
-void bc_round(bc_num num, zend_long places, zend_long mode, bc_num *result);
+size_t bc_round(bc_num num, zend_long places, zend_long mode, bc_num *result);
 
 typedef enum {
 	OK,

@@ -403,7 +403,7 @@ static int _php_server_push_callback(CURL *parent_ch, CURL *easy, size_t num_hea
 	php_curl 				*ch;
 	php_curl 				*parent;
 	php_curlm 				*mh 			= (php_curlm *)userp;
-	size_t 					rval 			= CURL_PUSH_DENY;
+	int 					rval 			= CURL_PUSH_DENY;
 	zval					*pz_parent_ch 	= NULL;
 	zval 					pz_ch;
 	zval 					headers;
@@ -524,11 +524,7 @@ PHP_FUNCTION(curl_multi_setopt)
 
 	mh = Z_CURL_MULTI_P(z_mh);
 
-	if (_php_curl_multi_setopt(mh, options, zvalue, return_value)) {
-		RETURN_TRUE;
-	} else {
-		RETURN_FALSE;
-	}
+	RETURN_BOOL(_php_curl_multi_setopt(mh, options, zvalue, return_value));
 }
 /* }}} */
 
@@ -598,7 +594,9 @@ static HashTable *curl_multi_get_gc(zend_object *object, zval **table, int *n)
 
 	zend_get_gc_buffer_use(gc_buffer, table, n);
 
-	return zend_std_get_properties(object);
+	/* CurlMultiHandle can never have properties as it's final and has strict-properties on.
+	 * Avoid building a hash table. */
+	return NULL;
 }
 
 static zend_object_handlers curl_multi_handlers;

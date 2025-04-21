@@ -16,7 +16,11 @@
    +----------------------------------------------------------------------+
 */
 
-static zend_op_array dummy_op_array;
+#include "zend_jit.h"
+#include "zend_jit_internal.h"
+#include "zend_shared_alloc.h"
+#include "ir/ir.h"
+
 static zend_jit_trace_info *zend_jit_traces = NULL;
 static const void **zend_jit_exit_groups = NULL;
 
@@ -74,9 +78,6 @@ static void zend_jit_trace_startup(bool reattached)
 			zend_accel_error_noreturn(ACCEL_LOG_FATAL, "Could not obtain JIT exit groups buffer!");
 		}
 	}
-
-	memset(&dummy_op_array, 0, sizeof(dummy_op_array));
-	dummy_op_array.fn_flags = ZEND_ACC_DONE_PASS_TWO;
 
 	JIT_G(exit_counters) = calloc(JIT_G(max_exit_counters), 1);
 	if (JIT_G(exit_counters) == NULL) {
@@ -1876,7 +1877,8 @@ static zend_ssa *zend_jit_trace_build_tssa(zend_jit_trace_rec *trace_buffer, uin
 						if (!(orig_op1_type & IS_TRACE_PACKED)) {
 							zend_ssa_var_info *info = &tssa->var_info[tssa->ops[idx].op1_use];
 
-							if (MAY_BE_PACKED(info->type) && MAY_BE_HASH(info->type)) {
+							if (MAY_BE_PACKED(info->type) && MAY_BE_HASH(info->type)
+							 && (info->type & (MAY_BE_ANY|MAY_BE_UNDEF)) == MAY_BE_ARRAY) {
 								info->type |= MAY_BE_PACKED_GUARD;
 								info->type &= ~MAY_BE_ARRAY_PACKED;
 							}
@@ -1885,7 +1887,8 @@ static zend_ssa *zend_jit_trace_build_tssa(zend_jit_trace_rec *trace_buffer, uin
 								&& val_type != IS_UNDEF) {
 							zend_ssa_var_info *info = &tssa->var_info[tssa->ops[idx].op1_use];
 
-							if (MAY_BE_PACKED(info->type) && MAY_BE_HASH(info->type)) {
+							if (MAY_BE_PACKED(info->type) && MAY_BE_HASH(info->type)
+							 && (info->type & (MAY_BE_ANY|MAY_BE_UNDEF)) == MAY_BE_ARRAY) {
 								info->type |= MAY_BE_PACKED_GUARD;
 								info->type &= ~(MAY_BE_ARRAY_NUMERIC_HASH|MAY_BE_ARRAY_STRING_HASH);
 							}
@@ -1969,7 +1972,8 @@ static zend_ssa *zend_jit_trace_build_tssa(zend_jit_trace_rec *trace_buffer, uin
 
 						zend_ssa_var_info *info = &tssa->var_info[tssa->ops[idx].op1_use];
 
-						if (MAY_BE_PACKED(info->type) && MAY_BE_HASH(info->type)) {
+						if (MAY_BE_PACKED(info->type) && MAY_BE_HASH(info->type)
+						 && (info->type & (MAY_BE_ANY|MAY_BE_UNDEF)) == MAY_BE_ARRAY) {
 							info->type |= MAY_BE_PACKED_GUARD;
 							if (orig_op1_type & IS_TRACE_PACKED) {
 								info->type &= ~(MAY_BE_ARRAY_NUMERIC_HASH|MAY_BE_ARRAY_STRING_HASH);
@@ -2071,7 +2075,8 @@ static zend_ssa *zend_jit_trace_build_tssa(zend_jit_trace_rec *trace_buffer, uin
 
 						zend_ssa_var_info *info = &tssa->var_info[tssa->ops[idx].op1_use];
 
-						if (MAY_BE_PACKED(info->type) && MAY_BE_HASH(info->type)) {
+						if (MAY_BE_PACKED(info->type) && MAY_BE_HASH(info->type)
+						 && (info->type & (MAY_BE_ANY|MAY_BE_UNDEF)) == MAY_BE_ARRAY) {
 							info->type |= MAY_BE_PACKED_GUARD;
 							if (orig_op1_type & IS_TRACE_PACKED) {
 								info->type &= ~(MAY_BE_ARRAY_NUMERIC_HASH|MAY_BE_ARRAY_STRING_HASH);
@@ -2101,7 +2106,8 @@ static zend_ssa *zend_jit_trace_build_tssa(zend_jit_trace_rec *trace_buffer, uin
 
 						zend_ssa_var_info *info = &tssa->var_info[tssa->ops[idx].op1_use];
 
-						if (MAY_BE_PACKED(info->type) && MAY_BE_HASH(info->type)) {
+						if (MAY_BE_PACKED(info->type) && MAY_BE_HASH(info->type)
+						 && (info->type & (MAY_BE_ANY|MAY_BE_UNDEF)) == MAY_BE_ARRAY) {
 							info->type |= MAY_BE_PACKED_GUARD;
 							info->type &= ~MAY_BE_ARRAY_PACKED;
 						}
@@ -4240,10 +4246,13 @@ static const void *zend_jit_trace(zend_jit_trace_rec *trace_buffer, uint32_t par
 			if ((info & MAY_BE_PACKED_GUARD) != 0
 			 && (trace_buffer->stop == ZEND_JIT_TRACE_STOP_LOOP
 			  || trace_buffer->stop == ZEND_JIT_TRACE_STOP_RECURSIVE_CALL
-			  || trace_buffer->stop == ZEND_JIT_TRACE_STOP_RECURSIVE_RET)
+			  || (trace_buffer->stop == ZEND_JIT_TRACE_STOP_RECURSIVE_RET
+			   && EX_VAR_TO_NUM((opline-1)->result.var) == i))
 			 && (ssa->vars[i].use_chain != -1
 			  || (ssa->vars[i].phi_use_chain
 			   && !(ssa->var_info[ssa->vars[i].phi_use_chain->ssa_var].type & MAY_BE_PACKED_GUARD)))) {
+				ZEND_ASSERT(STACK_TYPE(stack, i) == IS_ARRAY);
+
 				if (!zend_jit_packed_guard(&ctx, opline, EX_NUM_TO_VAR(i), info)) {
 					goto jit_failure;
 				}
@@ -7429,7 +7438,7 @@ static const void *zend_jit_trace_exit_to_vm(uint32_t trace_num, uint32_t exit_n
 				original_handler = 1;
 			}
 		}
-		zend_jit_set_ip_ex(&ctx, opline, original_handler);
+		zend_jit_set_ip(&ctx, opline);
 	}
 
 	zend_jit_trace_return(&ctx, original_handler, opline);
