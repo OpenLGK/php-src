@@ -65,6 +65,7 @@
 # pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 #endif
 
+#include "zend_attributes.h"
 #include "curl_arginfo.h"
 
 ZEND_DECLARE_MODULE_GLOBALS(curl)
@@ -624,7 +625,7 @@ static size_t curl_write(char *data, size_t size, size_t nmemb, void *ctx)
 			if (!Z_ISUNDEF(retval)) {
 				_php_curl_verify_handlers(ch, /* reporterror */ true);
 				/* TODO Check callback returns an int or something castable to int */
-				length = zval_get_long(&retval);
+				length = php_curl_get_long(&retval);
 			}
 
 			zval_ptr_dtor(&argv[0]);
@@ -657,7 +658,7 @@ static int curl_fnmatch(void *ctx, const char *pattern, const char *string)
 	if (!Z_ISUNDEF(retval)) {
 		_php_curl_verify_handlers(ch, /* reporterror */ true);
 		/* TODO Check callback returns an int or something castable to int */
-		rval = zval_get_long(&retval);
+		rval = php_curl_get_long(&retval);
 	}
 	zval_ptr_dtor(&argv[0]);
 	zval_ptr_dtor(&argv[1]);
@@ -694,7 +695,7 @@ static size_t curl_progress(void *clientp, double dltotal, double dlnow, double 
 	if (!Z_ISUNDEF(retval)) {
 		_php_curl_verify_handlers(ch, /* reporterror */ true);
 		/* TODO Check callback returns an int or something castable to int */
-		if (0 != zval_get_long(&retval)) {
+		if (0 != php_curl_get_long(&retval)) {
 			rval = 1;
 		}
 	}
@@ -732,7 +733,7 @@ static size_t curl_xferinfo(void *clientp, curl_off_t dltotal, curl_off_t dlnow,
 	if (!Z_ISUNDEF(retval)) {
 		_php_curl_verify_handlers(ch, /* reporterror */ true);
 		/* TODO Check callback returns an int or something castable to int */
-		if (0 != zval_get_long(&retval)) {
+		if (0 != php_curl_get_long(&retval)) {
 			rval = 1;
 		}
 	}
@@ -831,6 +832,7 @@ static int curl_ssh_hostkeyfunction(void *clientp, int keytype, const char *key,
 			}
 		} else {
 			zend_throw_error(NULL, "The CURLOPT_SSH_HOSTKEYFUNCTION callback must return either CURLKHMATCH_OK or CURLKHMATCH_MISMATCH");
+			zval_ptr_dtor(&retval);
 		}
 	}
 
@@ -925,7 +927,7 @@ static size_t curl_write_header(char *data, size_t size, size_t nmemb, void *ctx
 			if (!Z_ISUNDEF(retval)) {
 				// TODO: Check for valid int type for return value
 				_php_curl_verify_handlers(ch, /* reporterror */ true);
-				length = zval_get_long(&retval);
+				length = php_curl_get_long(&retval);
 			}
 			zval_ptr_dtor(&argv[0]);
 			zval_ptr_dtor(&argv[1]);
@@ -1341,6 +1343,17 @@ void _php_setup_easy_copy_handlers(php_curl *ch, php_curl *source)
 
 	/* Keep track of cloned copies to avoid invoking curl destructors for every clone */
 	(*source->clone)++;
+}
+
+zend_long php_curl_get_long(zval *zv)
+{
+	if (EXPECTED(Z_TYPE_P(zv) == IS_LONG)) {
+		return Z_LVAL_P(zv);
+	} else {
+		zend_long ret = zval_get_long(zv);
+		zval_ptr_dtor(zv);
+		return ret;
+	}
 }
 
 static size_t read_cb(char *buffer, size_t size, size_t nitems, void *arg) /* {{{ */
@@ -1863,6 +1876,7 @@ static zend_result _php_curl_setopt(php_curl *ch, zend_long option, zval *zvalue
 #if LIBCURL_VERSION_NUM >= 0x080900 /* Available since 8.9.0 */
 		case CURLOPT_TCP_KEEPCNT:
 #endif
+		case CURLOPT_FOLLOWLOCATION:
 			lval = zval_get_long(zvalue);
 			if ((option == CURLOPT_PROTOCOLS || option == CURLOPT_REDIR_PROTOCOLS) &&
 				(PG(open_basedir) && *PG(open_basedir)) && (lval & CURLPROTO_FILE)) {
@@ -1895,14 +1909,11 @@ static zend_result _php_curl_setopt(php_curl *ch, zend_long option, zval *zvalue
 		case CURLOPT_SSLKEYTYPE:
 		case CURLOPT_SSL_CIPHER_LIST:
 		case CURLOPT_USERAGENT:
-		case CURLOPT_USERPWD:
 		case CURLOPT_COOKIELIST:
 		case CURLOPT_FTP_ALTERNATIVE_TO_USER:
 		case CURLOPT_SSH_HOST_PUBLIC_KEY_MD5:
-		case CURLOPT_PASSWORD:
 		case CURLOPT_PROXYPASSWORD:
 		case CURLOPT_PROXYUSERNAME:
-		case CURLOPT_USERNAME:
 		case CURLOPT_NOPROXY:
 		case CURLOPT_SOCKS5_GSSAPI_SERVICE:
 		case CURLOPT_MAIL_FROM:
@@ -1996,6 +2007,12 @@ static zend_result _php_curl_setopt(php_curl *ch, zend_long option, zval *zvalue
 		case CURLOPT_HSTS:
 #endif
 		case CURLOPT_KRBLEVEL:
+		// Authorization header would be implictly set
+		// with an empty string thus we explictly set the option
+		// to null to avoid this unwarranted side effect
+		case CURLOPT_USERPWD:
+		case CURLOPT_USERNAME:
+		case CURLOPT_PASSWORD:
 		{
 			if (Z_ISNULL_P(zvalue)) {
 				error = curl_easy_setopt(ch->cp, option, NULL);
@@ -2184,12 +2201,14 @@ static zend_result _php_curl_setopt(php_curl *ch, zend_long option, zval *zvalue
 			ZEND_HASH_FOREACH_VAL(ph, current) {
 				ZVAL_DEREF(current);
 				val = zval_get_tmp_string(current, &tmp_val);
-				slist = curl_slist_append(slist, ZSTR_VAL(val));
+				struct curl_slist *new_slist = curl_slist_append(slist, ZSTR_VAL(val));
 				zend_tmp_string_release(tmp_val);
-				if (!slist) {
+				if (!new_slist) {
+					curl_slist_free_all(slist);
 					php_error_docref(NULL, E_WARNING, "Could not build curl_slist");
 					return FAILURE;
 				}
+				slist = new_slist;
 			} ZEND_HASH_FOREACH_END();
 
 			if (slist) {
@@ -2208,11 +2227,6 @@ static zend_result _php_curl_setopt(php_curl *ch, zend_long option, zval *zvalue
 		case CURLOPT_BINARYTRANSFER:
 		case CURLOPT_DNS_USE_GLOBAL_CACHE:
 			/* Do nothing, just backward compatibility */
-			break;
-
-		case CURLOPT_FOLLOWLOCATION:
-			lval = zend_is_true(zvalue);
-			error = curl_easy_setopt(ch->cp, option, lval);
 			break;
 
 		case CURLOPT_POSTFIELDS:
@@ -2747,6 +2761,7 @@ PHP_FUNCTION(curl_getinfo)
 						if (curl_easy_getinfo(ch->cp, option, &slist) == CURLE_OK) {
 							struct curl_slist *current = slist;
 							array_init(return_value);
+							zend_hash_real_init_packed(Z_ARRVAL_P(return_value));
 							while (current) {
 								add_next_index_string(return_value, current->data);
 								current = current->next;

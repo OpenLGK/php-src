@@ -151,9 +151,6 @@ struct _soapService {
 
 
 ZEND_BEGIN_MODULE_GLOBALS(soap)
-	HashTable  defEncNs;     /* mapping of default namespaces to prefixes */
-	HashTable  defEnc;
-	HashTable  defEncIndex;
 	HashTable *typemap;
 	int        cur_uniq_ns;
 	int        soap_version;
@@ -173,6 +170,7 @@ ZEND_BEGIN_MODULE_GLOBALS(soap)
 	HashTable  wsdl_cache;
 	int        cur_uniq_ref;
 	HashTable *ref_map;
+	zend_string *lang_en;
 ZEND_END_MODULE_GLOBALS(soap)
 
 #ifdef ZTS
@@ -195,7 +193,9 @@ extern zend_class_entry* soap_var_class_entry;
 extern zend_class_entry* soap_url_class_entry;
 extern zend_class_entry* soap_sdl_class_entry;
 
-void add_soap_fault(zval *obj, char *fault_code, char *fault_string, char *fault_actor, zval *fault_detail);
+extern HashTable php_soap_defEncNs, php_soap_defEnc, php_soap_defEncIndex;
+
+void add_soap_fault(zval *obj, char *fault_code, char *fault_string, char *fault_actor, zval *fault_detail, zend_string *lang);
 
 #define soap_error0(severity, format) \
 	php_error(severity, "SOAP-ERROR: " format)

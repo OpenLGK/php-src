@@ -165,7 +165,12 @@
 # if defined(RTLD_GROUP) && defined(RTLD_WORLD) && defined(RTLD_PARENT)
 #  define DL_LOAD(libname)			dlopen(libname, PHP_RTLD_MODE | RTLD_GLOBAL | RTLD_GROUP | RTLD_WORLD | RTLD_PARENT)
 # elif defined(RTLD_DEEPBIND) && !defined(__SANITIZE_ADDRESS__) && !__has_feature(memory_sanitizer)
-#  define DL_LOAD(libname)			dlopen(libname, PHP_RTLD_MODE | RTLD_GLOBAL | RTLD_DEEPBIND)
+#  if defined(LM_ID_NEWLM)
+     ZEND_API extern bool zend_dl_use_deepbind;
+#    define DL_LOAD(libname)			dlopen(libname, PHP_RTLD_MODE | RTLD_GLOBAL | (zend_dl_use_deepbind ? RTLD_DEEPBIND : 0))
+#  else
+#    define DL_LOAD(libname)			dlopen(libname, PHP_RTLD_MODE | RTLD_GLOBAL | RTLD_DEEPBIND)
+#  endif
 # else
 #  define DL_LOAD(libname)			dlopen(libname, PHP_RTLD_MODE | RTLD_GLOBAL)
 # endif
@@ -757,6 +762,12 @@ extern "C++" {
 # define ZEND_INDIRECT_RETURN __attribute__((__indirect_return__))
 #else
 # define ZEND_INDIRECT_RETURN
+#endif
+
+#if __has_attribute(nonstring) && defined(__GNUC__) && !defined(__clang__) && __GNUC__ >= 15
+# define ZEND_NONSTRING __attribute__((nonstring))
+#else
+# define ZEND_NONSTRING
 #endif
 
 #define __ZEND_DO_PRAGMA(x) _Pragma(#x)

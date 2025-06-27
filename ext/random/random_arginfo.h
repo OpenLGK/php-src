@@ -1,5 +1,5 @@
 /* This is a generated file, edit the .stub.php file instead.
- * Stub hash: fad14b8b8abaf9f33d7837ba8f6190c5d10ff63f */
+ * Stub hash: 416be19494555016195600e488d79f0dd35f2620 */
 
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_lcg_value, 0, 0, IS_DOUBLE, 0)
 ZEND_END_ARG_INFO()
@@ -160,8 +160,8 @@ static const zend_function_entry ext_functions[] = {
 	ZEND_RAW_FENTRY("srand", zif_mt_srand, arginfo_srand, 0, NULL, NULL)
 	ZEND_FE(rand, arginfo_rand)
 	ZEND_FE(mt_rand, arginfo_mt_rand)
-	ZEND_FE(mt_getrandmax, arginfo_mt_getrandmax)
-	ZEND_RAW_FENTRY("getrandmax", zif_mt_getrandmax, arginfo_getrandmax, 0, NULL, NULL)
+	ZEND_RAW_FENTRY("mt_getrandmax", zif_mt_getrandmax, arginfo_mt_getrandmax, ZEND_ACC_COMPILE_TIME_EVAL, NULL, NULL)
+	ZEND_RAW_FENTRY("getrandmax", zif_mt_getrandmax, arginfo_getrandmax, ZEND_ACC_COMPILE_TIME_EVAL, NULL, NULL)
 	ZEND_FE(random_bytes, arginfo_random_bytes)
 	ZEND_FE(random_int, arginfo_random_int)
 	ZEND_FE_END
@@ -240,6 +240,19 @@ static void register_random_symbols(int module_number)
 	ZVAL_STR(&attribute_Deprecated_func_lcg_value_0_arg1, attribute_Deprecated_func_lcg_value_0_arg1_str);
 	ZVAL_COPY_VALUE(&attribute_Deprecated_func_lcg_value_0->args[1].value, &attribute_Deprecated_func_lcg_value_0_arg1);
 	attribute_Deprecated_func_lcg_value_0->args[1].name = ZSTR_KNOWN(ZEND_STR_MESSAGE);
+	zend_constant *const_MT_RAND_PHP = zend_hash_str_find_ptr(EG(zend_constants), "MT_RAND_PHP", sizeof("MT_RAND_PHP") - 1);
+
+	zend_attribute *attribute_Deprecated_const_MT_RAND_PHP_0 = zend_add_global_constant_attribute(const_MT_RAND_PHP, ZSTR_KNOWN(ZEND_STR_DEPRECATED_CAPITALIZED), 2);
+	zval attribute_Deprecated_const_MT_RAND_PHP_0_arg0;
+	zend_string *attribute_Deprecated_const_MT_RAND_PHP_0_arg0_str = zend_string_init("8.3", strlen("8.3"), 1);
+	ZVAL_STR(&attribute_Deprecated_const_MT_RAND_PHP_0_arg0, attribute_Deprecated_const_MT_RAND_PHP_0_arg0_str);
+	ZVAL_COPY_VALUE(&attribute_Deprecated_const_MT_RAND_PHP_0->args[0].value, &attribute_Deprecated_const_MT_RAND_PHP_0_arg0);
+	attribute_Deprecated_const_MT_RAND_PHP_0->args[0].name = ZSTR_KNOWN(ZEND_STR_SINCE);
+	zval attribute_Deprecated_const_MT_RAND_PHP_0_arg1;
+	zend_string *attribute_Deprecated_const_MT_RAND_PHP_0_arg1_str = zend_string_init("as it uses a biased non-standard variant of Mt19937", strlen("as it uses a biased non-standard variant of Mt19937"), 1);
+	ZVAL_STR(&attribute_Deprecated_const_MT_RAND_PHP_0_arg1, attribute_Deprecated_const_MT_RAND_PHP_0_arg1_str);
+	ZVAL_COPY_VALUE(&attribute_Deprecated_const_MT_RAND_PHP_0->args[1].value, &attribute_Deprecated_const_MT_RAND_PHP_0_arg1);
+	attribute_Deprecated_const_MT_RAND_PHP_0->args[1].name = ZSTR_KNOWN(ZEND_STR_MESSAGE);
 }
 
 static zend_class_entry *register_class_Random_Engine_Mt19937(zend_class_entry *class_entry_Random_Engine)
