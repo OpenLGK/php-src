@@ -53,7 +53,18 @@ static zend_always_inline void fuzzer_step(void) {
 static void (*orig_execute_ex)(zend_execute_data *execute_data);
 
 static void fuzzer_execute_ex(zend_execute_data *execute_data) {
+
+#ifdef ZEND_CHECK_STACK_LIMIT
+	if (UNEXPECTED(zend_call_stack_overflowed(EG(stack_limit)))) {
+		zend_call_stack_size_error();
+		/* No opline was executed before exception */
+		EG(opline_before_exception) = NULL;
+		/* Fall through to handle exception below. */
+	}
+#endif /* ZEND_CHECK_STACK_LIMIT */
+
 	const zend_op *opline = EX(opline);
+
 	while (1) {
 		fuzzer_step();
 		opline = ((opcode_handler_t) opline->handler)(execute_data, opline);
@@ -127,44 +138,15 @@ ZEND_ATTRIBUTE_UNUSED static void create_file(void) {
 ZEND_ATTRIBUTE_UNUSED static void opcache_invalidate(void) {
 	steps_left = MAX_STEPS;
 	zend_exception_save();
-	zval retval, func, args[2];
-	ZVAL_STRING(&func, "opcache_invalidate");
+	zval retval, args[2];
+	zend_function *fn = zend_hash_str_find_ptr(CG(function_table), ZEND_STRL("opcache_invalidate"));
+	ZEND_ASSERT(fn != NULL);
+
 	ZVAL_STRING(&args[0], FILE_NAME);
 	ZVAL_TRUE(&args[1]);
-	call_user_function(CG(function_table), NULL, &func, &retval, 2, args);
+	zend_call_known_function(fn, NULL, NULL, &retval, 2, args, NULL);
 	ZEND_ASSERT(Z_TYPE(retval) == IS_TRUE);
 	zval_ptr_dtor(&args[0]);
 	zval_ptr_dtor(&retval);
-	zval_ptr_dtor(&func);
 	zend_exception_restore();
-}
-
-ZEND_ATTRIBUTE_UNUSED char *get_opcache_path(void) {
-	/* Try relative to cwd. */
-	char *p = realpath("modules/opcache.so", NULL);
-	if (p) {
-		return p;
-	}
-
-	/* Try relative to binary location. */
-	char path[MAXPATHLEN];
-#if defined(__FreeBSD__)
-	size_t pathlen = sizeof(path);
-	int mib[4] = {CTL_KERN, KERN_PROC, KERN_PROC_PATHNAME, -1};
-	if (sysctl(mib, 4, path, &pathlen, NULL, 0) < 0) {
-#else
-	if (readlink("/proc/self/exe", path, sizeof(path)) < 0) {
-#endif
-		ZEND_ASSERT(0 && "Failed to get binary path");
-		return NULL;
-	}
-
-	/* Get basename. */
-	char *last_sep = strrchr(path, '/');
-	if (last_sep) {
-		*last_sep = '\0';
-	}
-
-	strlcat(path, "/modules/opcache.so", sizeof(path));
-	return realpath(path, NULL);
 }

@@ -233,9 +233,9 @@ static void soap_url_object_free(zend_object *obj)
 {
 	soap_url_object *url_obj = soap_url_object_fetch(obj);
 
-	if (url_obj->url) {
-		php_url_free(url_obj->url);
-		url_obj->url = NULL;
+	if (url_obj->uri) {
+		php_uri_struct_free(url_obj->uri);
+		url_obj->uri = NULL;
 	}
 
 	zend_object_std_dtor(&url_obj->std);
@@ -453,7 +453,6 @@ static void php_soap_init_globals(zend_soap_globals *soap_globals)
 	soap_globals->soap_version = SOAP_1_1;
 	soap_globals->mem_cache = NULL;
 	soap_globals->ref_map = NULL;
-	soap_globals->lang_en = zend_string_init_interned(ZEND_STRL("en"), true);
 }
 
 PHP_MSHUTDOWN_FUNCTION(soap)
@@ -552,6 +551,8 @@ PHP_MINIT_FUNCTION(soap)
 
 	old_error_handler = zend_error_cb;
 	zend_error_cb = soap_error_handler;
+
+	SOAP_GLOBAL(lang_en) = zend_string_init_interned(ZEND_STRL("en"), true);
 
 	return SUCCESS;
 }
@@ -2783,28 +2784,28 @@ PHP_METHOD(SoapClient, __getLastResponseHeaders)
 /* {{{ SoapClient::__doRequest() */
 PHP_METHOD(SoapClient, __doRequest)
 {
-	zend_string *buf;
-	char      *location, *action;
-	size_t     location_size, action_size;
+	zend_string *buf, *location, *uri_parser_class = NULL;
+	char       *action;
+	size_t     action_size;
 	zend_long  version;
 	bool  one_way = 0;
 	zval      *this_ptr = ZEND_THIS;
 
-	if (zend_parse_parameters(ZEND_NUM_ARGS(), "Sssl|b",
+	if (zend_parse_parameters(ZEND_NUM_ARGS(), "SSsl|bS!",
 	    &buf,
-	    &location, &location_size,
+	    &location,
 	    &action, &action_size,
-	    &version, &one_way) == FAILURE) {
+	    &version, &one_way, &uri_parser_class) == FAILURE) {
 		RETURN_THROWS();
 	}
 	if (SOAP_GLOBAL(features) & SOAP_WAIT_ONE_WAY_CALLS) {
 		one_way = 0;
 	}
 	if (one_way) {
-		if (make_http_soap_request(this_ptr, buf, location, action, version, NULL)) {
+		if (make_http_soap_request(this_ptr, buf, location, action, version, uri_parser_class, NULL)) {
 			RETURN_EMPTY_STRING();
 		}
-	} else if (make_http_soap_request(this_ptr, buf, location, action, version,
+	} else if (make_http_soap_request(this_ptr, buf, location, action, version, uri_parser_class,
 	    return_value)) {
 		return;
 	}
@@ -3716,7 +3717,7 @@ static xmlDocPtr serialize_response_call(sdlFunctionPtr function, const char *fu
 		if (version == SOAP_1_1) {
 			tmp = Z_FAULT_CODE_P(ret);
 			if (Z_TYPE_P(tmp) == IS_STRING) {
-				xmlNodePtr node = xmlNewNode(NULL, BAD_CAST("faultcode"));
+				xmlNodePtr node = xmlNewDocNode(doc, NULL, BAD_CAST("faultcode"), NULL);
 				zend_string *str = php_escape_html_entities((unsigned char*)Z_STRVAL_P(tmp), Z_STRLEN_P(tmp), 0, 0, NULL);
 				xmlAddChild(param, node);
 				if (fault_ns) {
@@ -3780,7 +3781,7 @@ static xmlDocPtr serialize_response_call(sdlFunctionPtr function, const char *fu
 			if (Z_TYPE_P(tmp) > IS_NULL) {
 				detail = tmp;
 			}
-			node = xmlNewNode(NULL, BAD_CAST(detail_name));
+			node = xmlNewDocNode(doc, NULL, BAD_CAST(detail_name), NULL);
 			xmlAddChild(param, node);
 
 			zend_hash_internal_pointer_reset(fault->details);
@@ -4112,7 +4113,7 @@ static xmlDocPtr serialize_function_call(zval *this_ptr, sdlFunctionPtr function
 					h = master_to_xml(enc, data, hdr_use, head);
 					xmlNodeSetName(h, BAD_CAST(Z_STRVAL_P(name)));
 				} else {
-					h = xmlNewNode(NULL, BAD_CAST(Z_STRVAL_P(name)));
+					h = xmlNewDocNode(doc, NULL, BAD_CAST(Z_STRVAL_P(name)), NULL);
 					xmlAddChild(head, h);
 				}
 				nsptr = encode_add_ns(h, Z_STRVAL_P(ns));
@@ -4205,8 +4206,10 @@ static xmlNodePtr serialize_zval(zval *val, sdlParamPtr param, const char *param
 	}
 	xmlParam = master_to_xml(enc, val, style, parent);
 	zval_ptr_dtor(&defval);
-	if (!strcmp((char*)xmlParam->name, "BOGUS")) {
-		xmlNodeSetName(xmlParam, BAD_CAST(paramName));
+	if (xmlParam != NULL) {
+		if (xmlParam->name == NULL || strcmp((char*)xmlParam->name, "BOGUS") == 0) {
+			xmlNodeSetName(xmlParam, BAD_CAST(paramName));
+		}
 	}
 	return xmlParam;
 }
